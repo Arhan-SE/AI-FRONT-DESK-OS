@@ -1,0 +1,60 @@
+[project]
+name = "genesis"
+version = "0.1.0"
+description = "AI Business Operating System for home service businesses"
+requires-python = ">=3.12"
+
+dependencies = [
+    # API
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.3",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.7.0",
+
+    # Data — asyncpg rather than the Supabase REST client, because the
+    # scheduling engine needs transactions, SKIP LOCKED, exclusion-constraint
+    # error handling and pgvector search, none of which PostgREST does well.
+    "asyncpg>=0.30.0",
+    "pgvector>=0.3.6",
+
+    # AI: one provider, one key — Realtime voice, gpt-4o-mini reasoning,
+    # text-embedding-3-small memory.
+    "openai>=3.1.0",
+    "livekit-agents>=1.6.10",
+    "livekit-plugins-openai>=1.6.10",
+    "livekit-plugins-silero>=1.6.10",
+
+    # Messaging
+    "python-telegram-bot>=22.8",
+
+    # Automation
+    "apscheduler>=3.11.3",
+
+    # Scheduling support
+    "tzdata>=2024.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "ruff>=0.9.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/genesis"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

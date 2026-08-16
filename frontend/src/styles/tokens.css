@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+/* Self-hosted. No CDN, no network dependency at render time. */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* ---------------------------------------------------------------------------
+   The whole visual system lives here.
+
+   Grayscale carries a trace of blue (hue 220). Pure zero-saturation gray reads
+   as flat and cheap; a few percent of saturation gives depth while still
+   reading as monochrome. Nothing else in the product is allowed colour except
+   the three status tokens, which is what makes a single red edge impossible
+   to miss on a dense screen.
+--------------------------------------------------------------------------- */
+@theme {
+  --color-canvas:      hsl(220 20% 99%);
+  --color-surface:     hsl(220 14% 97%);
+  --color-raised:      hsl(0 0% 100%);
+
+  --color-line:        hsl(220 13% 91%);
+  --color-line-strong: hsl(220 13% 84%);
+
+  --color-ink:         hsl(220 20% 10%);   /* near-black, never pure #000 */
+  --color-ink-muted:   hsl(220 9% 46%);
+  --color-ink-subtle:  hsl(220 9% 60%);
+
+  --color-accent:      hsl(220 20% 10%);
+  --color-accent-ink:  hsl(0 0% 100%);
+
+  /* Status. Meaning only — never decoration. */
+  --color-critical:    hsl(0 72% 45%);
+  --color-warning:     hsl(38 92% 42%);
+  --color-success:     hsl(142 55% 33%);
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Never fully rounded. 8px is the ceiling. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* One shadow in the entire product, for popovers and dialogs only.
+     Cards get structure from hairline borders instead. */
+  --shadow-overlay: 0 8px 24px -6px hsl(220 20% 10% / 0.12),
+                    0 2px 6px -2px hsl(220 20% 10% / 0.08);
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    /* Numbers must not reflow as they update. Applied globally so every
+       metric, timestamp and table figure is tabular by default. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Focus is always visible. Keyboard navigation is a requirement, not a
+     nicety, and a monochrome UI has no colour cue to fall back on. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  ::selection {
+    background: hsl(220 20% 10% / 0.12);
+  }
+
+  /* Motion budget: 120-150ms, opacity and transform only. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* The typographic scale from the spec, as named classes so a heading is
+     never a pile of ad-hoc utilities that drift between pages. */
+  .t-page-title {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  .t-section-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .t-metric {
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .t-body {
+    font-size: 14px;
+    font-weight: 400;
+  }
+
+  .t-cell {
+    font-size: 13px;
+    font-weight: 400;
+  }
+
+  .t-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-ink-muted);
+  }
+
+  .t-meta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--color-ink-subtle);
+  }
+}
