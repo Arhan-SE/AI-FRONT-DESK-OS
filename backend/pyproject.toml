@@ -19,7 +19,11 @@ dependencies = [
 
     # AI: one provider, one key — Realtime voice, gpt-4o-mini reasoning,
     # text-embedding-3-small memory.
-    "openai>=3.1.0",
+    #
+    # Held at 2.x deliberately: livekit-agents 1.6.x requires openai>=2,<3.
+    # 3.x exists but would break the voice plugin, and the 2.x SDK covers
+    # everything used here — Realtime, chat completions, and embeddings.
+    "openai>=2.2,<3",
     "livekit-agents>=1.6.10",
     "livekit-plugins-openai>=1.6.10",
     "livekit-plugins-silero>=1.6.10",
