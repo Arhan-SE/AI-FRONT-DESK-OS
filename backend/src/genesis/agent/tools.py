@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 
 from genesis.db import pool
 from genesis.domain.leads import scoring as leads_scoring
@@ -69,17 +70,27 @@ async def _log(state: SessionState, event: str, summary: str, **detail) -> None:
 # ---------------------------------------------------------------- identity
 
 
-# Speech recognition spells names inconsistently — the same caller arrived as
-# "Muhammad", "Mohammed" and "Mohammad" across three calls. Exact matching made
-# each one a new customer with no history.
+# Identification matches on the *distinctive* part of a name, not the whole
+# string.
 #
-# Trigram similarity fixes that, but must not overreach: "Mohammed Kareem"
-# scores about equally against Mohammed Rafi, Mohammed Sadiq and Muhammad
-# Kareem, because the first name is common here. So a match is only accepted
-# when one candidate is clearly ahead of the next — otherwise the agent asks
-# for a phone number rather than guessing which of three people is calling.
-_NAME_FLOOR = 0.40
-_NAME_MARGIN = 0.12
+# Whole-string similarity fails here because given names repeat: "Mohammed
+# Kareem" scores about equally against Mohammed Rafi, Mohammed Sadiq and
+# Muhammad Kareem. But "Kareem" belongs to exactly one person, and a human
+# receptionist would recognise that instantly rather than asking for ID.
+#
+# So: find the tokens that identify exactly one customer, and match on those.
+# A shared token like "Mohammed" carries no information and is ignored. This
+# also absorbs spelling drift — Muhammad / Mohammed / Mohammad all reduce to
+# the same distinctive surname.
+_TOKEN_MATCH = 0.82
+
+
+def _tokens(name: str) -> list[str]:
+    return [t for t in re.split(r"[^a-z]+", name.lower()) if len(t) > 1]
+
+
+def _similar(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
 
 _PROFILE = """
     (select count(*) from appointments a
@@ -122,34 +133,56 @@ async def identify_customer(state: SessionState, name: str, phone: str = "") -> 
                 name,
             )
 
-        # 3. Close spelling, but only when it is unambiguous.
+        # 3. Match on whichever part of the name identifies one person.
         if row is None:
-            near = await conn.fetch(
-                f"""select id, full_name, similarity(c.full_name, $2) as score, {_PROFILE}
-                      from customers c
-                     where c.business_id = $1 and similarity(c.full_name, $2) >= $3
-                     order by score desc
-                     limit 3""",
+            everyone = await conn.fetch(
+                f"select id, full_name, {_PROFILE} from customers c where c.business_id = $1",
                 settings.demo_business_id,
-                name,
-                _NAME_FLOOR,
             )
-            if len(near) == 1 or (
-                len(near) > 1 and near[0]["score"] - near[1]["score"] >= _NAME_MARGIN
-            ):
-                row = near[0]
+
+            # How many customers share each token. A token held by one person
+            # identifies them; a token held by three identifies nobody.
+            owners: dict[str, set[str]] = {}
+            for person in everyone:
+                for token in _tokens(person["full_name"]):
+                    owners.setdefault(token, set()).add(str(person["id"]))
+
+            matched: dict[str, float] = {}
+            shared_hit = False
+            for spoken in _tokens(name):
+                for token, holders in owners.items():
+                    if _similar(spoken, token) < _TOKEN_MATCH:
+                        continue
+                    if len(holders) == 1:
+                        who = next(iter(holders))
+                        matched[who] = max(matched.get(who, 0.0), _similar(spoken, token))
+                    else:
+                        # e.g. just "Mohammed", which several customers share.
+                        shared_hit = True
+
+            if len(matched) == 1:
+                who, score = next(iter(matched.items()))
+                row = next(p for p in everyone if str(p["id"]) == who)
                 await _log(
                     state,
                     "customer_matched",
                     f"Matched '{name}' to {row['full_name']}",
-                    confidence=float(row["score"]),
+                    confidence=round(score, 2),
                 )
-            elif len(near) > 1:
-                # Several plausible people. Asking is cheaper than being wrong.
-                await _log(state, "identity_ambiguous", f"'{name}' matched {len(near)} customers")
+            elif len(matched) > 1:
+                # Genuinely two different people, not a spelling variant.
+                await _log(state, "identity_ambiguous", f"'{name}' matched {len(matched)} customers")
                 return (
-                    "Several customers have a similar name. Ask for their phone "
-                    "number to be sure which one this is."
+                    "That name matches more than one customer. Ask them for their "
+                    "surname."
+                )
+            elif shared_hit:
+                # They gave only a name several customers share. Creating a new
+                # record here is how one person ends up with three of them.
+                await _log(state, "identity_incomplete", f"'{name}' is not specific enough")
+                return (
+                    "Several customers share that name and no surname was given. "
+                    "Ask for their full name."
                 )
 
         if row is None:
