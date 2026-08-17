@@ -78,6 +78,15 @@ Wait for: `Local: http://localhost:5173/`
 
 ## Verify before presenting
 
+```bash
+make dev-check
+```
+
+Checks every process, the database, both credentials, and — the one that is
+easy to miss — whether LiveKit is still advertising an IP address this machine
+actually has. It exits non-zero if anything is wrong.
+
+
 Open **http://localhost:5173**.
 
 The bottom of the sidebar is the single check that matters:
@@ -116,6 +125,7 @@ pkill -f vite
 |---|---|---|
 | Sidebar says API unreachable | uvicorn died | Restart terminal 2 |
 | Start call spins, never connects | LiveKit down | Restart terminal 1, then terminal 3 |
+| Call connects then drops after a few seconds | Machine's IP changed since LiveKit started — it is advertising the old one | Restart terminal 1. `make dev-check` detects this |
 | Agent joins but never speaks | OpenAI key or network | Check terminal 3 output |
 | Microphone denied | Browser permission | Allow in site settings, reload |
 | Reminders never send | No Telegram token | Expected — the Guard blocks, correctly |

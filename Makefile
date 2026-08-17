@@ -20,8 +20,17 @@ setup:
 	cd frontend && npm install
 	@echo "Install the LiveKit server if missing: brew install livekit"
 
-# Terminal 1 — dev mode uses the well-known devkey/secret pair and binds
-# localhost only. Media stays on this machine.
+# Terminal 1 — dev mode uses the well-known devkey/secret pair.
+#
+# LiveKit detects this machine's IP at startup and advertises it as its ICE
+# candidate, while binding its media socket to the same address. Those two must
+# agree, and auto-detection is what keeps them agreeing — do not pin --node-ip
+# to loopback, because the media socket does not follow it and every call then
+# dies at "connecting -> disconnected".
+#
+# The consequence: if the machine's IP changes (new network, DHCP renewal),
+# LiveKit is still advertising the old one. Restart this process. `make
+# dev-check` detects exactly that.
 livekit:
 	livekit-server --dev
 
