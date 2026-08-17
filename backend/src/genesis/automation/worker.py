@@ -18,6 +18,7 @@ import logging
 import signal
 from datetime import UTC, datetime
 
+from genesis.automation import telegram_poller
 from genesis.automation.jobs.handlers import HANDLERS
 from genesis.db import pool
 from genesis.settings import settings
@@ -149,6 +150,19 @@ async def main() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _shutdown.set)
 
+    # Outbound jobs and inbound Telegram run side by side. Telegram long
+    # polling blocks for ~20s per call, so it cannot share the job loop without
+    # stalling every reminder behind it.
+    await asyncio.gather(
+        _job_loop(),
+        telegram_poller.run_forever(_shutdown),
+    )
+
+    log.info("worker stopped at %s", datetime.now(UTC).isoformat(timespec="seconds"))
+    await pool.close_pool()
+
+
+async def _job_loop() -> None:
     while not _shutdown.is_set():
         try:
             ran = await drain_once()
@@ -162,9 +176,6 @@ async def main() -> None:
             await asyncio.wait_for(_shutdown.wait(), timeout=POLL_INTERVAL_SECONDS)
         except TimeoutError:
             pass
-
-    log.info("worker stopped at %s", datetime.now(UTC).isoformat(timespec="seconds"))
-    await pool.close_pool()
 
 
 if __name__ == "__main__":

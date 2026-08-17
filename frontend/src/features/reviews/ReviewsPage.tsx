@@ -1,11 +1,15 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Page } from "@/components/AppShell";
 import {
-  Panel, PanelHeader, MetricTile, Table, Th, Td, Tr,
+  Panel, PanelHeader, MetricTile, Table, Th, Td, Tr, StatusDot,
   EmptyState, ErrorState, TableSkeleton,
 } from "@/components/ui/primitives";
+import { Button, Dialog, InlineError } from "@/components/ui/controls";
 import { useReviews } from "@/lib/pageQueries";
+import { api, ApiError } from "@/lib/api";
 import { formatRelative } from "@/lib/format";
-import { Star } from "lucide-react";
+import { Star, Send, ShieldCheck } from "lucide-react";
 
 function Stars({ rating }: { rating: number }) {
   return (
@@ -23,6 +27,7 @@ function Stars({ rating }: { rating: number }) {
 
 export function ReviewsPage() {
   const reviews = useReviews();
+  const [outreachOpen, setOutreachOpen] = useState(false);
   const all = reviews.data ?? [];
 
   const answered = all.filter((r) => r.submitted_at !== null);
@@ -33,7 +38,15 @@ export function ReviewsPage() {
   const rate = all.length ? Math.round((answered.length / all.length) * 100) : 0;
 
   return (
-    <Page title="Reviews">
+    <Page
+      title="Reviews"
+      action={
+        <Button variant="primary" onClick={() => setOutreachOpen(true)}>
+          <Send className="size-3.5" strokeWidth={2} />
+          Request reviews
+        </Button>
+      }
+    >
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricTile label="Average rating" value={avg}
           hint={`${answered.length} answered`} loading={reviews.isPending} />
@@ -83,6 +96,111 @@ export function ReviewsPage() {
           </Table>
         )}
       </Panel>
+
+      <ReviewOutreachDialog open={outreachOpen} onClose={() => setOutreachOpen(false)} />
     </Page>
+  );
+}
+
+/**
+ * Review outreach. The audience is computed, not chosen: every completed job
+ * with no review submitted. The Guard is run over it first so the owner sees
+ * who will actually be reached before committing.
+ */
+function ReviewOutreachDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<number | null>(null);
+
+  const preview = useQuery({
+    queryKey: ["campaign-preview", "review_request"],
+    queryFn: () => api.campaignPreview("review_request"),
+    enabled: open,
+  });
+
+  const run = useMutation({
+    mutationFn: async () => {
+      const ids = preview.data?.candidates.filter((c) => c.eligible).map((c) => c.customer_id) ?? [];
+      const result = await api.launchCampaign({
+        name: `Review requests — ${new Date().toLocaleDateString("en-IN")}`,
+        campaign_type: "review_request",
+        customer_ids: ids,
+      });
+      // Queue and send in one action; waiting is not useful here.
+      await api.runDue();
+      return result;
+    },
+    onSuccess: (r) => {
+      setSent(r.queued);
+      qc.invalidateQueries({ queryKey: ["reviews"] });
+      qc.invalidateQueries({ queryKey: ["campaigns"] });
+      qc.invalidateQueries({ queryKey: ["ai-decisions"] });
+    },
+    onError: (e: unknown) =>
+      setError(e instanceof ApiError ? e.message : "Could not send the requests."),
+  });
+
+  const eligible = preview.data?.eligible ?? 0;
+
+  return (
+    <Dialog
+      open={open}
+      onClose={() => { setSent(null); setError(null); onClose(); }}
+      title="Request reviews"
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => { setSent(null); onClose(); }}>
+            {sent === null ? "Cancel" : "Close"}
+          </Button>
+          {sent === null ? (
+            <Button variant="primary" loading={run.isPending} disabled={eligible === 0}
+              onClick={() => run.mutate()}>
+              Send {eligible} request{eligible === 1 ? "" : "s"}
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      {sent !== null ? (
+        <p className="t-body">
+          Queued {sent} request{sent === 1 ? "" : "s"} and ran the queue. Ratings
+          appear here as customers reply.
+        </p>
+      ) : preview.isPending ? (
+        <p className="t-label">Checking who is eligible…</p>
+      ) : preview.isError ? (
+        <InlineError message="Could not work out the audience." />
+      ) : preview.data?.total === 0 ? (
+        <p className="t-body">
+          Nobody is waiting on a review request. Complete a job first.
+        </p>
+      ) : (
+        <>
+          <p className="t-body">
+            {preview.data?.total} customer{preview.data?.total === 1 ? "" : "s"} completed
+            a job without leaving a review.
+          </p>
+          <div className="flex items-center gap-1.5 t-meta">
+            <ShieldCheck className="size-3.5" strokeWidth={1.75} />
+            {eligible} of {preview.data?.total} pass the Communication Guard
+          </div>
+          <ul className="max-h-[170px] space-y-px overflow-y-auto rounded-[4px] border border-line">
+            {preview.data?.candidates.map((c) => (
+              <li key={c.customer_id}
+                className="flex items-center gap-2 px-2.5 py-1.5 text-[13px]">
+                <StatusDot tone={c.eligible ? "success" : "warning"} />
+                <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                {!c.eligible ? (
+                  <span className="truncate text-[11px] text-ink-subtle" title={c.reason ?? ""}>
+                    {c.reason}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <InlineError message={error} />
+    </Dialog>
   );
 }
