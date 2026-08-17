@@ -69,28 +69,88 @@ async def _log(state: SessionState, event: str, summary: str, **detail) -> None:
 # ---------------------------------------------------------------- identity
 
 
+# Speech recognition spells names inconsistently — the same caller arrived as
+# "Muhammad", "Mohammed" and "Mohammad" across three calls. Exact matching made
+# each one a new customer with no history.
+#
+# Trigram similarity fixes that, but must not overreach: "Mohammed Kareem"
+# scores about equally against Mohammed Rafi, Mohammed Sadiq and Muhammad
+# Kareem, because the first name is common here. So a match is only accepted
+# when one candidate is clearly ahead of the next — otherwise the agent asks
+# for a phone number rather than guessing which of three people is calling.
+_NAME_FLOOR = 0.40
+_NAME_MARGIN = 0.12
+
+_PROFILE = """
+    (select count(*) from appointments a
+      where a.customer_id = c.id and a.status = 'completed') as visits,
+    (select s.name from appointments a join services s on s.id = a.service_id
+      where a.customer_id = c.id and a.status = 'completed'
+      order by a.starts_at desc limit 1) as last_service
+"""
+
+
 async def identify_customer(state: SessionState, name: str, phone: str = "") -> str:
     """Find the caller, or create them. Returns a line the agent can speak from."""
     name = name.strip()
+    phone = phone.strip()
     if not name:
         return "Ask the caller for their name."
 
     async with pool.connection() as conn:
-        row = await conn.fetchrow(
-            """
-            select id, full_name,
-                   (select count(*) from appointments a
-                     where a.customer_id = c.id and a.status = 'completed') as visits,
-                   (select s.name from appointments a join services s on s.id = a.service_id
-                     where a.customer_id = c.id and a.status = 'completed'
-                     order by a.starts_at desc limit 1) as last_service
-              from customers c
-             where c.business_id = $1 and lower(c.full_name) = lower($2)
-             limit 1
-            """,
-            settings.demo_business_id,
-            name,
-        )
+        # 1. A phone number is the strongest signal there is.
+        row = None
+        if phone:
+            digits = "".join(ch for ch in phone if ch.isdigit())[-10:]
+            if len(digits) >= 8:
+                row = await conn.fetchrow(
+                    f"""select id, full_name, {_PROFILE} from customers c
+                         where c.business_id = $1
+                           and regexp_replace(coalesce(c.phone,''), '\\D', '', 'g') like '%' || $2
+                         limit 1""",
+                    settings.demo_business_id,
+                    digits,
+                )
+
+        # 2. Exact name.
+        if row is None:
+            row = await conn.fetchrow(
+                f"""select id, full_name, {_PROFILE} from customers c
+                     where c.business_id = $1 and lower(c.full_name) = lower($2)
+                     limit 1""",
+                settings.demo_business_id,
+                name,
+            )
+
+        # 3. Close spelling, but only when it is unambiguous.
+        if row is None:
+            near = await conn.fetch(
+                f"""select id, full_name, similarity(c.full_name, $2) as score, {_PROFILE}
+                      from customers c
+                     where c.business_id = $1 and similarity(c.full_name, $2) >= $3
+                     order by score desc
+                     limit 3""",
+                settings.demo_business_id,
+                name,
+                _NAME_FLOOR,
+            )
+            if len(near) == 1 or (
+                len(near) > 1 and near[0]["score"] - near[1]["score"] >= _NAME_MARGIN
+            ):
+                row = near[0]
+                await _log(
+                    state,
+                    "customer_matched",
+                    f"Matched '{name}' to {row['full_name']}",
+                    confidence=float(row["score"]),
+                )
+            elif len(near) > 1:
+                # Several plausible people. Asking is cheaper than being wrong.
+                await _log(state, "identity_ambiguous", f"'{name}' matched {len(near)} customers")
+                return (
+                    "Several customers have a similar name. Ask for their phone "
+                    "number to be sure which one this is."
+                )
 
         if row is None:
             row = await conn.fetchrow(

@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Page } from "@/components/AppShell";
+import { api, ApiError } from "@/lib/api";
+import { InlineError } from "@/components/ui/controls";
 import {
   Panel, PanelHeader, StatusDot, EmptyState, ErrorState, TableSkeleton, Tag, type Tone,
 } from "@/components/ui/primitives";
@@ -291,8 +294,53 @@ function ListView({ rows, onSelect }: { rows: JobRow[]; onSelect: (j: JobRow) =>
 }
 
 function DetailDialog({ job, onClose }: { job: JobRow | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setConfirmDelete(false);
+    setError(null);
+  }, [job]);
+
+  const remove = useMutation({
+    mutationFn: () => api.deleteJob(job!.id),
+    onSuccess: () => {
+      // Everything that hung off this booking has gone with it, so every view
+      // that counted it needs to be told.
+      for (const key of ["appointments", "jobs", "invoices", "customers",
+                         "dashboard-metrics", "daily-activity", "ai-decisions",
+                         "automation-queue", "reviews"]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
+      onClose();
+    },
+    onError: (e: unknown) =>
+      setError(e instanceof ApiError ? e.message : "Could not delete this appointment."),
+  });
+
   return (
-    <Dialog open={job !== null} onClose={onClose} title={job?.customer_name ?? "Appointment"}>
+    <Dialog
+      open={job !== null}
+      onClose={onClose}
+      title={job?.customer_name ?? "Appointment"}
+      footer={
+        job ? (
+          <>
+            <Button
+              variant="ghost"
+              loading={remove.isPending}
+              className={confirmDelete ? "text-critical" : ""}
+              onClick={() => (confirmDelete ? remove.mutate() : setConfirmDelete(true))}
+            >
+              {confirmDelete ? "Confirm delete" : "Delete appointment"}
+            </Button>
+            <span className="flex-1" />
+            <Button onClick={onClose}>Close</Button>
+          </>
+        ) : undefined
+      }
+    >
       {job ? (
         <dl className="space-y-2.5 text-[13px]">
           {[
@@ -314,6 +362,16 @@ function DetailDialog({ job, onClose }: { job: JobRow | null; onClose: () => voi
           <div className="pt-1">
             <Tag>Change the stage from the Jobs board</Tag>
           </div>
+
+          {confirmDelete ? (
+            <p className="pt-1 text-[12px] text-critical">
+              This removes the appointment, its invoice and payment, any pending
+              reminders, follow-ups and review requests. The customer stays.
+              Messages already sent cannot be recalled.
+            </p>
+          ) : null}
+
+          <InlineError message={error} />
         </dl>
       ) : null}
     </Dialog>
