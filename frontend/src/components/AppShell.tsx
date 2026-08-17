@@ -13,7 +13,58 @@ import {
   Settings,
   PhoneCall,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
+import { api } from "@/lib/api";
+
+/**
+ * Live system state, always on screen.
+ *
+ * Without this, a backend that dies mid-demo shows up as an error on whichever
+ * page happens to be open — and looks like that page is broken. One indicator
+ * that is always visible turns "something is wrong" into "the API is down".
+ */
+function SystemStatus() {
+  const health = useQuery({
+    queryKey: ["health"],
+    queryFn: api.health,
+    refetchInterval: 10_000,
+    retry: 0,
+  });
+
+  const down = health.isError;
+  const h = health.data as
+    | { telegram_configured?: boolean; ai_configured?: boolean }
+    | undefined;
+
+  const telegramOff = h ? !h.telegram_configured : false;
+
+  return (
+    <div className="space-y-1.5 border-t border-line px-4 py-3">
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            down ? "bg-critical" : health.isPending ? "bg-ink-subtle" : "bg-success",
+          )}
+          aria-hidden
+        />
+        <span className="t-meta">
+          {down ? "API unreachable" : health.isPending ? "Checking…" : "All systems running"}
+        </span>
+      </div>
+
+      {/* Named explicitly rather than left as a silent gap: outreach not
+          arriving is the first thing anyone will ask about. */}
+      {telegramOff ? (
+        <div className="flex items-center gap-2">
+          <span className="size-1.5 shrink-0 rounded-full bg-warning" aria-hidden />
+          <span className="t-meta">Telegram not configured</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /** Navigation is grouped, because eleven flat items is a wall. */
 const groups = [
@@ -122,9 +173,7 @@ export function AppShell() {
           ))}
         </nav>
 
-        <div className="border-t border-line px-4 py-3">
-          <div className="t-meta">AI Business Operating System</div>
-        </div>
+        <SystemStatus />
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">

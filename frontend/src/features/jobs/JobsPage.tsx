@@ -162,7 +162,8 @@ export function JobsPage() {
 
       {runDue.data ? (
         <p className="t-meta mb-3">
-          Advanced {runDue.data.advanced} · executed {runDue.data.executed} — see AI Activity
+          Advanced {runDue.data.advanced} · executed {runDue.data.executed} — outcomes
+          appear in the activity feed on Overview
         </p>
       ) : null}
 

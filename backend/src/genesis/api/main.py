@@ -79,7 +79,9 @@ app.include_router(leads.router)
 
 @app.get("/health", tags=["system"])
 async def health() -> dict[str, object]:
-    """Used by the frontend to show a connection state rather than hanging."""
+    """Connection state and configuration, for the Settings page and the
+    sidebar indicator. Deliberately reports what is *not* configured too —
+    a demo failing because of a missing value should say so, not go quiet."""
     db = await pool.healthcheck()
     return {
         "status": "ok",
@@ -87,4 +89,24 @@ async def health() -> dict[str, object]:
         "telegram_configured": settings.telegram_enabled,
         "ai_configured": settings.ai_enabled,
         "timezone": settings.business_timezone,
+        "livekit_url": settings.livekit_url,
+        "models": {
+            "voice": "gpt-realtime",
+            "reasoning": settings.reasoning_model,
+        },
+        "rates_usd_per_million": {
+            "reasoning_input": settings.rate_mini_input,
+            "reasoning_output": settings.rate_mini_output,
+            "realtime_audio_input": settings.rate_realtime_audio_input,
+            "realtime_audio_output": settings.rate_realtime_audio_output,
+        },
+        "policy": {
+            "slot_hold_seconds": settings.slot_hold_ttl_seconds,
+            "min_booking_lead_minutes": settings.min_booking_lead_minutes,
+            "followup_delay_hours": settings.followup_delay_hours,
+            "review_delay_hours": settings.review_delay_hours,
+            "invoice_due_days": settings.invoice_due_days,
+            "marketing_cooldown_days": settings.marketing_cooldown_days,
+            "quiet_hours": f"{settings.quiet_hours_start}:00–{settings.quiet_hours_end}:00",
+        },
     }
