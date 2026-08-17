@@ -76,6 +76,18 @@ class Settings(BaseSettings):
     hot_threshold: int = 75
     warm_threshold: int = 50
 
+    # --- Job pipeline timing ---------------------------------------------
+    #
+    # How long after each owner action the corresponding automation becomes
+    # due. Real values, not demo values: the "Run due automations" control
+    # advances the clock rather than shortening these, so the demo exercises
+    # exactly the same code path a real deployment would.
+    followup_delay_hours: int = 2
+    review_delay_hours: int = 24
+    invoice_due_days: int = 7
+    payment_reminder_repeat_days: int = 3
+    max_payment_reminders: int = 3
+
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.business_timezone)
