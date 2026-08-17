@@ -210,10 +210,86 @@ async def payment_reminder(payload: dict) -> SendResult:
     return result
 
 
+async def campaign_message(payload: dict) -> SendResult:
+    from genesis.domain import campaigns
+
+    campaign_id = payload["campaign_id"]
+    customer_id = payload["customer_id"]
+    message_type = MessageType(payload["message_type"])
+
+    row = await pool.fetchrow(
+        """
+        select c.full_name,
+               max(a.starts_at) as last_service_at,
+               (select s.name from appointments a2
+                  join services s on s.id = a2.service_id
+                 where a2.customer_id = c.id and a2.status = 'completed'
+                 order by a2.starts_at desc limit 1) as last_service
+          from customers c
+          left join appointments a on a.customer_id = c.id and a.status = 'completed'
+         where c.id = $1 and c.business_id = $2
+         group by c.id
+        """,
+        customer_id,
+        settings.demo_business_id,
+    )
+    if row is None:
+        raise ValueError("Customer no longer exists")
+
+    first_name = row["full_name"].split()[0]
+    months = 0
+    if row["last_service_at"]:
+        months = max(1, int((datetime.now(UTC) - row["last_service_at"]).days / 30))
+
+    context: dict[str, Any] = {
+        MessageType.REACTIVATION: {"name": first_name, "months": months},
+        MessageType.SEASONAL: {},
+        MessageType.REVIEW_REQUEST: {
+            "name": first_name,
+            "service": row["last_service"] or "recent service",
+        },
+    }[message_type]
+
+    result = await send_customer_message(
+        business_id=settings.demo_business_id,
+        customer_id=customer_id,
+        message_type=message_type,
+        context=context,
+        dedupe_key=f"campaign:{campaign_id}",
+        campaign_id=campaign_id,
+    )
+
+    # The recipient row records what actually happened, so a campaign that was
+    # mostly refused reports that instead of claiming success.
+    if result.sent:
+        recipient_status = "sent"
+    elif result.blocked:
+        recipient_status = "blocked"
+    else:
+        recipient_status = "failed"
+
+    await pool.execute(
+        """
+        update campaign_recipients
+           set status = $3,
+               block_reason = $4,
+               sent_at = case when $3 = 'sent' then now() end
+         where campaign_id = $1 and customer_id = $2
+        """,
+        campaign_id,
+        customer_id,
+        recipient_status,
+        result.reason,
+    )
+    await campaigns.finalise_if_complete(campaign_id)
+    return result
+
+
 HANDLERS = {
     "appointment_confirmation": appointment_confirmation,
     "appointment_reminder": appointment_reminder,
     "post_service_followup": post_service_followup,
     "review_request": review_request,
     "payment_reminder": payment_reminder,
+    "campaign_message": campaign_message,
 }

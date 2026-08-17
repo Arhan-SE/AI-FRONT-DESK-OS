@@ -98,6 +98,25 @@ export interface QueueItem {
   last_error: string | null;
 }
 
+export type CampaignType = "reactivation" | "seasonal" | "review_request";
+
+export interface CampaignCandidate {
+  customer_id: string;
+  name: string;
+  eligible: boolean;
+  reason: string | null;
+  code: string | null;
+  days_since: number;
+}
+
+export interface CampaignPreview {
+  campaign_type: string;
+  total: number;
+  eligible: number;
+  blocked: number;
+  candidates: CampaignCandidate[];
+}
+
 export const api = {
   health: () => request<Record<string, unknown>>("/health"),
 
@@ -125,6 +144,21 @@ export const api = {
     }),
 
   queue: () => request<QueueItem[]>("/api/automation/queue"),
+
+  campaignPreview: (campaignType: CampaignType, lapsedDays = 90) =>
+    request<CampaignPreview>(
+      `/api/campaigns/preview?campaign_type=${campaignType}&lapsed_days=${lapsedDays}`,
+    ),
+
+  launchCampaign: (body: {
+    name: string;
+    campaign_type: CampaignType;
+    customer_ids: string[];
+  }) =>
+    request<{ campaign_id: string; queued: number }>("/api/campaigns", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   runDue: () =>
     request<{ advanced: number; executed: number }>("/api/automation/run-due", {

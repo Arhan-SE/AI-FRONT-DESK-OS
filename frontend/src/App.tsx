@@ -4,19 +4,20 @@ import { AppShell, Page } from "@/components/AppShell";
 import { Panel, EmptyState } from "@/components/ui/primitives";
 import { OverviewPage } from "@/features/overview/OverviewPage";
 import { JobsPage } from "@/features/jobs/JobsPage";
+import { PaymentsPage } from "@/features/payments/PaymentsPage";
+import { CustomersPage } from "@/features/customers/CustomersPage";
+import { AppointmentsPage } from "@/features/appointments/AppointmentsPage";
+import { CampaignsPage } from "@/features/campaigns/CampaignsPage";
+import { ReviewsPage } from "@/features/reviews/ReviewsPage";
+import { LeadsPage } from "@/features/leads/LeadsPage";
 import { Hammer } from "lucide-react";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-      staleTime: 30_000,
-    },
+    queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 15_000 },
   },
 });
 
-/** Temporary. Each of these is replaced as its feature lands. */
 function Placeholder({ title }: { title: string }) {
   return (
     <Page title={title}>
@@ -39,13 +40,13 @@ const router = createBrowserRouter([
       { index: true, element: <OverviewPage /> },
       { path: "jobs", element: <JobsPage /> },
       { path: "activity", element: <Placeholder title="AI Activity" /> },
-      { path: "leads", element: <Placeholder title="Leads" /> },
-      { path: "customers", element: <Placeholder title="Customers" /> },
-      { path: "appointments", element: <Placeholder title="Appointments" /> },
+      { path: "leads", element: <LeadsPage /> },
+      { path: "customers", element: <CustomersPage /> },
+      { path: "appointments", element: <AppointmentsPage /> },
       { path: "conversations", element: <Placeholder title="Conversations" /> },
-      { path: "campaigns", element: <Placeholder title="Campaigns" /> },
-      { path: "reviews", element: <Placeholder title="Reviews" /> },
-      { path: "payments", element: <Placeholder title="Payments" /> },
+      { path: "campaigns", element: <CampaignsPage /> },
+      { path: "reviews", element: <ReviewsPage /> },
+      { path: "payments", element: <PaymentsPage /> },
       { path: "insights", element: <Placeholder title="Insights" /> },
       { path: "demo", element: <Placeholder title="Live Call" /> },
       { path: "settings", element: <Placeholder title="Settings" /> },
