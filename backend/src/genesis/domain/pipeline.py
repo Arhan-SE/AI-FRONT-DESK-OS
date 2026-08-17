@@ -53,6 +53,7 @@ class Action(StrEnum):
 class JobType(StrEnum):
     APPOINTMENT_CONFIRMATION = "appointment_confirmation"
     APPOINTMENT_REMINDER = "appointment_reminder"
+    INVOICE_SENT = "invoice_sent"
     POST_SERVICE_FOLLOWUP = "post_service_followup"
     REVIEW_REQUEST = "review_request"
     PAYMENT_REMINDER = "payment_reminder"
@@ -286,6 +287,17 @@ async def transition(job_id: str, action: Action) -> TransitionResult:
                 job["base_price"],
                 due_on,
             )
+
+            # The customer gets the bill now. "Send invoice" that sends nothing
+            # to the customer is a button that lies about what it does.
+            await _enqueue(
+                conn,
+                job_type=JobType.INVOICE_SENT,
+                scheduled_for=now,
+                payload={"invoice_id": str(invoice_id)},
+                dedupe_key=f"invoice:{invoice_id}:issued",
+            )
+            enqueued.append("invoice_sent")
 
             # First reminder falls due the morning after the due date. Repeats
             # are scheduled by the job itself, so a paid invoice stops the chain.

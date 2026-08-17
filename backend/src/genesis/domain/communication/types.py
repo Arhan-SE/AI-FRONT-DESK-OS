@@ -23,6 +23,7 @@ class MessageType(StrEnum):
     APPOINTMENT_CONFIRMATION = "appointment_confirmation"
     APPOINTMENT_REMINDER = "appointment_reminder"
     POST_SERVICE_FOLLOWUP = "post_service_followup"
+    INVOICE_SENT = "invoice_sent"
     PAYMENT_REMINDER = "payment_reminder"
     REVIEW_REQUEST = "review_request"
     REACTIVATION = "reactivation"
@@ -33,6 +34,7 @@ CATEGORY_OF: dict[MessageType, Category] = {
     MessageType.APPOINTMENT_CONFIRMATION: Category.TRANSACTIONAL,
     MessageType.APPOINTMENT_REMINDER: Category.TRANSACTIONAL,
     MessageType.POST_SERVICE_FOLLOWUP: Category.TRANSACTIONAL,
+    MessageType.INVOICE_SENT: Category.TRANSACTIONAL,
     MessageType.PAYMENT_REMINDER: Category.TRANSACTIONAL,
     MessageType.REVIEW_REQUEST: Category.TRANSACTIONAL,
     MessageType.REACTIVATION: Category.MARKETING,

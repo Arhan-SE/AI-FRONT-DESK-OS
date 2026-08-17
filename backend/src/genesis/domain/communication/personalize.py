@@ -68,6 +68,9 @@ INTENT: dict[MessageType, str] = {
         "Check the work is holding up. Invite them to reply if anything is wrong.",
     MessageType.REVIEW_REQUEST:
         "Ask for a rating from 1 to 5, where 5 is excellent. Keep it light.",
+    MessageType.INVOICE_SENT:
+        "Send them the bill for work just completed. State the amount and when "
+        "it is due. Friendly, not a demand — nothing is late yet.",
     MessageType.PAYMENT_REMINDER:
         "Politely remind them the invoice is unpaid. Do not be aggressive, "
         "even on a later reminder. Ask them to reply once it is settled.",

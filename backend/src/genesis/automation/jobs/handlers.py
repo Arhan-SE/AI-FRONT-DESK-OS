@@ -150,6 +150,42 @@ async def review_request(payload: dict) -> SendResult:
     return result
 
 
+async def invoice_sent(payload: dict) -> SendResult:
+    """Deliver the bill at the moment it is raised, not when it goes overdue."""
+    invoice = await pool.fetchrow(
+        """
+        select i.id, i.invoice_number, i.amount, i.due_on, i.status, i.customer_id,
+               c.full_name as customer_name, s.name as service_name
+          from invoices i
+          join customers c on c.id = i.customer_id
+          left join appointments a on a.id = i.appointment_id
+          left join services s on s.id = a.service_id
+         where i.id = $1 and i.business_id = $2
+        """,
+        payload["invoice_id"],
+        settings.demo_business_id,
+    )
+    if invoice is None:
+        raise ValueError("Invoice no longer exists")
+
+    if invoice["status"] in ("paid", "void"):
+        return SendResult(sent=False, blocked=True, code=None, reason="Invoice already settled")
+
+    return await send_customer_message(
+        business_id=settings.demo_business_id,
+        customer_id=str(invoice["customer_id"]),
+        message_type=MessageType.INVOICE_SENT,
+        context={
+            "name": invoice["customer_name"].split()[0],
+            "invoice": invoice["invoice_number"],
+            "amount": f"{invoice['amount']:,.0f}",
+            "due": invoice["due_on"].strftime("%d %b"),
+            "service": invoice["service_name"] or "the work",
+        },
+        dedupe_key=str(invoice["id"]),
+    )
+
+
 async def payment_reminder(payload: dict) -> SendResult:
     invoice_id = payload["invoice_id"]
     attempt = int(payload.get("attempt", 1))
@@ -303,6 +339,7 @@ HANDLERS = {
     "appointment_reminder": appointment_reminder,
     "post_service_followup": post_service_followup,
     "review_request": review_request,
+    "invoice_sent": invoice_sent,
     "payment_reminder": payment_reminder,
     "campaign_message": campaign_message,
 }

@@ -211,6 +211,7 @@ _LABELS: dict[MessageType, str] = {
     MessageType.APPOINTMENT_CONFIRMATION: "Booking confirmation",
     MessageType.APPOINTMENT_REMINDER: "Appointment reminder",
     MessageType.POST_SERVICE_FOLLOWUP: "Post-service follow-up",
+    MessageType.INVOICE_SENT: "Invoice",
     MessageType.PAYMENT_REMINDER: "Payment reminder",
     MessageType.REVIEW_REQUEST: "Review request",
     MessageType.REACTIVATION: "Reactivation message",
