@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import {
   LayoutDashboard,
   Activity,
+  Briefcase,
   Target,
   Users,
   CalendarDays,
@@ -27,6 +28,7 @@ const groups = [
   {
     label: "Pipeline",
     items: [
+      { to: "/jobs", label: "Jobs", icon: Briefcase },
       { to: "/leads", label: "Leads", icon: Target },
       { to: "/customers", label: "Customers", icon: Users },
       { to: "/appointments", label: "Appointments", icon: CalendarDays },

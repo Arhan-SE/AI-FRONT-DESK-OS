@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell, Page } from "@/components/AppShell";
 import { Panel, EmptyState } from "@/components/ui/primitives";
 import { OverviewPage } from "@/features/overview/OverviewPage";
+import { JobsPage } from "@/features/jobs/JobsPage";
 import { Hammer } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -36,6 +37,7 @@ const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <OverviewPage /> },
+      { path: "jobs", element: <JobsPage /> },
       { path: "activity", element: <Placeholder title="AI Activity" /> },
       { path: "leads", element: <Placeholder title="Leads" /> },
       { path: "customers", element: <Placeholder title="Customers" /> },
