@@ -1,14 +1,18 @@
+import { useState } from "react";
 import { Page } from "@/components/AppShell";
 import {
-  Panel, PanelHeader, Table, Th, Td, Tr, StatusDot,
+  Panel, PanelHeader, Table, Th, Td, Tr,
   EmptyState, ErrorState, TableSkeleton, MetricTile,
 } from "@/components/ui/primitives";
-import { useCustomers } from "@/lib/pageQueries";
+import { Button } from "@/components/ui/controls";
+import { useCustomers, type CustomerRow } from "@/lib/pageQueries";
+import { EditCustomerDialog } from "./EditCustomerDialog";
 import { formatCurrency, formatRelative } from "@/lib/format";
-import { Users, MessageSquareOff, Check } from "lucide-react";
+import { Users } from "lucide-react";
 
 export function CustomersPage() {
   const customers = useCustomers();
+  const [editing, setEditing] = useState<CustomerRow | null>(null);
   const all = customers.data ?? [];
 
   const reachable = all.filter((c) => c.reachable).length;
@@ -20,9 +24,9 @@ export function CustomersPage() {
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricTile label="Customers" value={all.length} loading={customers.isPending} />
         <MetricTile
-          label="Reachable on Telegram"
+          label="Contactable"
           value={`${reachable}/${all.length || 0}`}
-          hint={reachable === 0 ? "none linked yet" : undefined}
+          hint={reachable === 0 ? "no Telegram linked yet" : "Telegram linked"}
           tone={reachable === 0 && all.length > 0 ? "warning" : "neutral"}
           loading={customers.isPending}
         />
@@ -38,7 +42,7 @@ export function CustomersPage() {
       <Panel>
         <PanelHeader
           title="All customers"
-          description="Messaging requires a linked Telegram chat — unlinked customers cannot be contacted"
+          description="Open a customer to edit details or link their Telegram chat"
         />
         {customers.isPending ? (
           <TableSkeleton rows={5} cols={6} />
@@ -52,12 +56,12 @@ export function CustomersPage() {
               <tr>
                 <Th>Name</Th><Th>Phone</Th><Th align="right">Jobs</Th>
                 <Th>Last service</Th><Th align="right">Paid</Th>
-                <Th align="right">Outstanding</Th><Th>Telegram</Th>
+                <Th align="right">Outstanding</Th><Th align="right"></Th>
               </tr>
             </thead>
             <tbody>
               {all.map((c) => (
-                <Tr key={c.id}>
+                <Tr key={c.id} onClick={() => setEditing(c)}>
                   <Td>
                     <span className="flex items-center gap-2">
                       <span className="font-medium">{c.full_name}</span>
@@ -80,21 +84,8 @@ export function CustomersPage() {
                   <Td align="right" className={c.amount_outstanding > 0 ? "font-medium" : "text-ink-subtle"}>
                     {c.amount_outstanding > 0 ? formatCurrency(c.amount_outstanding) : "—"}
                   </Td>
-                  <Td>
-                    {c.reachable ? (
-                      <span className="flex items-center gap-2">
-                        <StatusDot tone="success" />
-                        <Check className="size-3.5 text-ink-muted" strokeWidth={2} />
-                      </span>
-                    ) : (
-                      <span
-                        className="flex items-center gap-2 text-ink-subtle"
-                        title="Messages to this customer will be blocked by the Communication Guard"
-                      >
-                        <MessageSquareOff className="size-3.5" strokeWidth={1.75} />
-                        <span className="t-meta">not linked</span>
-                      </span>
-                    )}
+                  <Td align="right">
+                    <Button variant="ghost" onClick={() => setEditing(c)}>Edit</Button>
                   </Td>
                 </Tr>
               ))}
@@ -102,6 +93,8 @@ export function CustomersPage() {
           </Table>
         )}
       </Panel>
+
+      <EditCustomerDialog customer={editing} onClose={() => setEditing(null)} />
     </Page>
   );
 }

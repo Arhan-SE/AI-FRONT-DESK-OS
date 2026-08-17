@@ -98,6 +98,16 @@ export interface QueueItem {
   last_error: string | null;
 }
 
+export interface CustomerPatch {
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  telegram_chat_id: number | null;
+  do_not_contact: boolean;
+  status: string;
+}
+
 export type CampaignType = "reactivation" | "seasonal" | "review_request";
 
 export interface CampaignCandidate {
@@ -144,6 +154,18 @@ export const api = {
     }),
 
   queue: () => request<QueueItem[]>("/api/automation/queue"),
+
+  updateCustomer: (id: string, body: Partial<CustomerPatch>) =>
+    request<{ id: string; full_name: string; reachable: boolean }>(
+      `/api/customers/${id}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+
+  createCustomer: (body: CustomerPatch) =>
+    request<{ id: string; full_name: string }>("/api/customers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   campaignPreview: (campaignType: CampaignType, lapsedDays = 90) =>
     request<CampaignPreview>(

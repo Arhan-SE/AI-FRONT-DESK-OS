@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 
 from genesis.db import pool
-from genesis.domain.communication import guard, telegram, templates
+from genesis.domain.communication import guard, personalize, telegram, templates
 from genesis.domain.communication.types import (
     CATEGORY_OF,
     BlockCode,
@@ -88,14 +88,24 @@ async def send_customer_message(
             "select telegram_chat_id from customers where id = $1", customer_id
         )
 
-    # ------------------------------------------------------------- render
-    try:
-        body = await templates.render_template(business_id, key, context)
-    except templates.TemplateError as exc:
-        await _record_failure(
-            business_id, customer_id, campaign_id, message_type, dedupe_key, str(exc)
-        )
-        return SendResult(sent=False, blocked=False, code=None, reason=str(exc))
+    # ------------------------------------------------------------- compose
+    #
+    # Personalised copy when the model can produce it, template otherwise.
+    # The template is not a legacy path — it is the guarantee that a message
+    # can always be produced, so a model outage degrades the wording rather
+    # than dropping the message.
+    facts = await personalize.build_facts(customer_id, message_type, extra=context)
+    body = await personalize.generate(message_type, facts)
+    personalised = body is not None
+
+    if body is None:
+        try:
+            body = await templates.render_template(business_id, key, context)
+        except templates.TemplateError as exc:
+            await _record_failure(
+                business_id, customer_id, campaign_id, message_type, dedupe_key, str(exc)
+            )
+            return SendResult(sent=False, blocked=False, code=None, reason=str(exc))
 
     # --------------------------------------------------------------- send
     delivery = await telegram.send_message(int(chat_id), body)
@@ -156,8 +166,16 @@ async def send_customer_message(
             business_id=business_id,
             customer_id=customer_id,
             event_type="message_sent",
-            summary=f"{_label(message_type)} sent",
-            detail={"message_type": message_type.value, "channel": "telegram"},
+            summary=(
+                f"{_label(message_type)} sent"
+                + (" — personalised from service history" if personalised else "")
+            ),
+            detail={
+                "message_type": message_type.value,
+                "channel": "telegram",
+                "personalised": personalised,
+                "body": body,
+            },
             tool_name="send_customer_message",
             conn=conn,
         )

@@ -177,6 +177,17 @@ async def payment_reminder(payload: dict) -> SendResult:
     if invoice["due_on"] < datetime.now(UTC).date() and invoice["status"] != "overdue":
         await pool.execute("update invoices set status = 'overdue' where id = $1", invoice_id)
 
+    # Whether the due date has passed must be stated, not implied. Given only
+    # "due: 24 Aug" the model will happily write "unpaid since 24 Aug" about a
+    # date still in the future.
+    days_past_due = (datetime.now(UTC).date() - invoice["due_on"]).days
+    if days_past_due > 0:
+        timing = f"overdue by {days_past_due} day(s)"
+    elif days_past_due == 0:
+        timing = "due today"
+    else:
+        timing = f"not yet due — payable in {-days_past_due} day(s)"
+
     result = await send_customer_message(
         business_id=settings.demo_business_id,
         customer_id=str(invoice["customer_id"]),
@@ -186,6 +197,8 @@ async def payment_reminder(payload: dict) -> SendResult:
             "invoice": invoice["invoice_number"],
             "amount": f"{invoice['amount']:,.0f}",
             "due": invoice["due_on"].strftime("%d %b"),
+            "payment_status": timing,
+            "reminder_number": attempt,
         },
         # Each attempt is its own message, so escalating reminders are allowed
         # while a retry of the same attempt is not.

@@ -46,9 +46,12 @@ export interface CustomerRow {
   id: string;
   full_name: string;
   phone: string | null;
+  email: string | null;
   address: string | null;
   status: string;
   reachable: boolean;
+  // bigint in Postgres — PostgREST returns it as a number in JSON.
+  telegram_chat_id: number | null;
   telegram_opted_in: boolean;
   do_not_contact: boolean;
   last_contacted_at: string | null;
