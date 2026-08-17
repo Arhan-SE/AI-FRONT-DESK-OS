@@ -12,6 +12,7 @@ millisecond of tool latency is audible as hesitation in a conversation.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -208,6 +209,16 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     state = T.SessionState(conversation_id=str(conversation_id))
 
+    # Fire-and-forget writes from synchronous event handlers. asyncio holds
+    # only a weak reference to a running task, so without this set a
+    # transcript or metrics write can be collected before it completes.
+    background: set[asyncio.Task] = set()
+
+    def spawn(coro) -> None:
+        task = asyncio.create_task(coro)
+        background.add(task)
+        task.add_done_callback(background.discard)
+
     await decisions.record(
         business_id=settings.demo_business_id,
         conversation_id=str(conversation_id),
@@ -234,7 +245,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
         inp = getattr(m, "input_token_details", None)
         out = getattr(m, "output_token_details", None)
-        ctx.create_task(
+        spawn(
             usage.record(
                 source="realtime",
                 model="gpt-realtime",
@@ -264,7 +275,7 @@ async def entrypoint(ctx: JobContext) -> None:
         if not text:
             return
 
-        ctx.create_task(
+        spawn(
             pool.execute(
                 """
                 insert into messages (business_id, conversation_id, role, content)
@@ -290,7 +301,7 @@ async def entrypoint(ctx: JobContext) -> None:
             log.warning("safety tripwire fired")
             session.interrupt()
             session.say(T.SAFETY_RESPONSE, allow_interruptions=False)
-            ctx.create_task(
+            spawn(
                 decisions.record(
                     business_id=settings.demo_business_id,
                     conversation_id=str(conversation_id),
