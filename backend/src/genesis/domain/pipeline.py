@@ -413,6 +413,177 @@ async def transition(job_id: str, action: Action) -> TransitionResult:
         return TransitionResult(job_id, action, new_status, enqueued, cancelled)
 
 
+# --------------------------------------------------------------------------
+# Correction
+# --------------------------------------------------------------------------
+#
+# Distinct from a transition on purpose. Transitions are the record of what
+# happened in the real world and only move forward; a correction says the
+# record was wrong. Conflating the two would make "cancel" and "I misclicked"
+# indistinguishable in the audit trail.
+
+# How far back each stage sits, so a correction knows what to undo.
+_ORDER = [
+    Stage.SCHEDULED,
+    Stage.CONFIRMED,
+    Stage.IN_PROGRESS,
+    Stage.COMPLETED,
+    Stage.INVOICE_SENT,
+    Stage.PAID,
+]
+
+_APPOINTMENT_STATUS = {
+    Stage.SCHEDULED: "booked",
+    Stage.CONFIRMED: "confirmed",
+    Stage.IN_PROGRESS: "in_progress",
+    Stage.COMPLETED: "completed",
+    Stage.INVOICE_SENT: "completed",
+    Stage.PAID: "completed",
+}
+
+
+async def correct_stage(job_id: str, target: Stage) -> TransitionResult:
+    """Move a job to an earlier stage, undoing what that stage set in motion.
+
+    Messages already sent are not unsent — that is not possible, and pretending
+    otherwise would be worse than admitting it. What this does undo is state
+    and pending work: invoices, payments, and queued automations.
+    """
+    if target not in _ORDER:
+        raise TransitionError(f"Cannot correct a job to '{target}'")
+
+    async with pool.transaction() as conn:
+        job = await conn.fetchrow(
+            """
+            select a.id, a.status, a.customer_id, c.full_name as customer_name,
+                   s.name as service_name, i.id as invoice_id, i.status as invoice_status,
+                   i.due_on
+              from appointments a
+              join customers c on c.id = a.customer_id
+              join services  s on s.id = a.service_id
+              left join invoices i on i.appointment_id = a.id
+             where a.id = $1 and a.business_id = $2
+             for update of a
+            """,
+            job_id,
+            settings.demo_business_id,
+        )
+        if job is None:
+            raise TransitionError("Job not found")
+
+        undone: list[str] = []
+        cancelled = 0
+
+        # --- invoice-level undo -------------------------------------------
+        if target in (Stage.SCHEDULED, Stage.CONFIRMED, Stage.IN_PROGRESS, Stage.COMPLETED):
+            if job["invoice_id"]:
+                await conn.execute(
+                    "delete from payments where invoice_id = $1", job["invoice_id"]
+                )
+                await conn.execute("delete from invoices where id = $1", job["invoice_id"])
+                cancelled += await _cancel_pending(conn, f"invoice:{job['invoice_id']}:")
+                undone.append("invoice removed")
+
+        elif target is Stage.INVOICE_SENT and job["invoice_id"]:
+            # Un-marking a payment: drop the payment record and put the invoice
+            # back to whichever state its due date implies.
+            await conn.execute("delete from payments where invoice_id = $1", job["invoice_id"])
+            new_status = (
+                "overdue" if job["due_on"] and job["due_on"] < datetime.now(UTC).date() else "sent"
+            )
+            await conn.execute(
+                "update invoices set status = $2, paid_at = null where id = $1",
+                job["invoice_id"],
+                new_status,
+            )
+            undone.append(f"payment removed, invoice back to {new_status}")
+
+            # Chasing resumes from the next unused attempt number.
+            #
+            # This must be derived from the jobs already created, not from
+            # messages sent: a reminder that ran and was blocked still owns its
+            # dedupe key, so reusing that number would be silently swallowed by
+            # ON CONFLICT and queue nothing at all.
+            highest = await conn.fetchval(
+                """
+                select coalesce(max(split_part(dedupe_key, ':', 4)::int), 0)
+                  from automation_jobs
+                 where business_id = $1
+                   and job_type = 'payment_reminder'
+                   and dedupe_key like $2
+                """,
+                settings.demo_business_id,
+                f"invoice:{job['invoice_id']}:reminder:%",
+            )
+            attempt = int(highest or 0) + 1
+
+            if attempt <= settings.max_payment_reminders:
+                queued = await _enqueue(
+                    conn,
+                    job_type=JobType.PAYMENT_REMINDER,
+                    scheduled_for=datetime.now(UTC) + timedelta(days=1),
+                    payload={"invoice_id": str(job["invoice_id"]), "attempt": attempt},
+                    dedupe_key=f"invoice:{job['invoice_id']}:reminder:{attempt}",
+                )
+                # Only claim what actually happened.
+                if queued:
+                    undone.append("payment reminder re-queued")
+            else:
+                undone.append(
+                    f"no further reminders — {settings.max_payment_reminders} already used"
+                )
+
+        # --- appointment-level undo ---------------------------------------
+        if target in (Stage.SCHEDULED, Stage.CONFIRMED, Stage.IN_PROGRESS):
+            cancelled += await _cancel_pending(conn, f"appointment:{job_id}:followup")
+            cancelled += await _cancel_pending(conn, f"appointment:{job_id}:review")
+        if target in (Stage.SCHEDULED, Stage.CONFIRMED):
+            await conn.execute(
+                "delete from reviews where appointment_id = $1 and submitted_at is null",
+                job_id,
+            )
+        if target is Stage.SCHEDULED:
+            cancelled += await _cancel_pending(conn, f"appointment:{job_id}:")
+
+        clears = {
+            Stage.SCHEDULED: "confirmed_at = null, started_at = null, completed_at = null",
+            Stage.CONFIRMED: "started_at = null, completed_at = null",
+            Stage.IN_PROGRESS: "completed_at = null",
+        }.get(target, "")
+
+        try:
+            await conn.execute(
+                f"""update appointments
+                       set status = $2, cancelled_at = null
+                           {', ' + clears if clears else ''}
+                     where id = $1""",  # noqa: S608 — clears is from the literal map above
+                job_id,
+                _APPOINTMENT_STATUS[target],
+            )
+        except asyncpg.exceptions.ExclusionViolationError as exc:
+            # Re-activating a cancelled job can collide: someone else may have
+            # taken the slot while it was free.
+            raise TransitionError(
+                "That technician is now booked at this time, so this job "
+                "cannot be reopened. Reschedule it instead."
+            ) from exc
+
+        await decisions.record(
+            business_id=settings.demo_business_id,
+            customer_id=str(job["customer_id"]),
+            event_type="job_corrected",
+            status="pending",
+            summary=(
+                f"Stage corrected to {target.value.replace('_', ' ')} — "
+                f"{job['service_name']} for {job['customer_name']}"
+            ),
+            detail={"job_id": job_id, "undone": undone, "cancelled_jobs": cancelled},
+            conn=conn,
+        )
+
+        return TransitionResult(job_id, Action.CANCEL, target, undone, cancelled)
+
+
 async def _next_invoice_number(conn: asyncpg.Connection) -> str:
     n = await conn.fetchval(
         """

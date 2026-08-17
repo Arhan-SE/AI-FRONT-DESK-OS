@@ -153,6 +153,13 @@ export const api = {
       body: JSON.stringify({ action }),
     }),
 
+  /** Fix a stage set by mistake. Undoes what that stage set in motion. */
+  correct: (jobId: string, stage: Stage) =>
+    request<TransitionResult>(`/api/jobs/${jobId}/correct`, {
+      method: "POST",
+      body: JSON.stringify({ stage }),
+    }),
+
   queue: () => request<QueueItem[]>("/api/automation/queue"),
 
   voiceSession: () =>

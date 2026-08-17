@@ -16,9 +16,10 @@ import {
 } from "@/components/ui/primitives";
 import { Button, InlineError } from "@/components/ui/controls";
 import { NewJobDialog } from "./NewJobDialog";
+import { CorrectStageDialog } from "./CorrectStageDialog";
 import { api, ApiError, type Job, type Action, type Stage } from "@/lib/api";
 import { formatDateTime, formatCurrency } from "@/lib/format";
-import { Plus, Play, Briefcase, MessageSquareOff } from "lucide-react";
+import { Plus, Play, Briefcase, MessageSquareOff, Undo2 } from "lucide-react";
 
 /**
  * The pipeline, in order. This array is the page: the strip across the top,
@@ -54,6 +55,7 @@ const CONSEQUENCE: Partial<Record<Action, string>> = {
 export function JobsPage() {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [correcting, setCorrecting] = useState<Job | null>(null);
   const [filter, setFilter] = useState<Stage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -208,6 +210,7 @@ export function JobsPage() {
                   job={job}
                   busy={busyId === job.id}
                   onMove={(action) => move.mutate({ id: job.id, action })}
+                  onCorrect={() => setCorrecting(job)}
                 />
               ))}
             </tbody>
@@ -216,6 +219,7 @@ export function JobsPage() {
       </Panel>
 
       <NewJobDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      <CorrectStageDialog job={correcting} onClose={() => setCorrecting(null)} />
     </Page>
   );
 }
@@ -224,13 +228,17 @@ function JobRow({
   job,
   busy,
   onMove,
+  onCorrect,
 }: {
   job: Job;
   busy: boolean;
   onMove: (action: Action) => void;
+  onCorrect: () => void;
 }) {
   const meta = STAGE_META.get(job.stage);
   const terminal = job.stage === "cancelled" || job.stage === "no_show";
+  // Nothing to walk back from the first stage.
+  const correctable = job.stage !== "scheduled" && !terminal;
 
   return (
     <Tr>
@@ -264,6 +272,16 @@ function JobRow({
       </Td>
       <Td align="right">
         <span className="flex items-center justify-end gap-1.5">
+          {correctable ? (
+            <Button
+              variant="ghost"
+              onClick={onCorrect}
+              disabled={busy}
+              title="Fix a stage set by mistake"
+            >
+              <Undo2 className="size-3.5" strokeWidth={2} />
+            </Button>
+          ) : null}
           {CANCELLABLE.includes(job.stage) ? (
             <Button variant="ghost" onClick={() => onMove("cancel")} disabled={busy}>
               Cancel

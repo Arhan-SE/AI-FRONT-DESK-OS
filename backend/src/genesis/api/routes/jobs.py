@@ -99,6 +99,27 @@ async def create_job(body: CreateJobRequest) -> TransitionResponse:
     return TransitionResponse(job_id=job_id, action="create", stage="scheduled")
 
 
+class CorrectionRequest(BaseModel):
+    stage: pipeline.Stage
+
+
+@router.post("/{job_id}/correct", response_model=TransitionResponse)
+async def correct_job(job_id: str, body: CorrectionRequest) -> TransitionResponse:
+    """Fix a stage set by mistake, undoing what it set in motion.
+
+    Separate from /transition on purpose: a transition records what happened,
+    a correction records that the record was wrong.
+    """
+    result = await pipeline.correct_stage(job_id, body.stage)
+    return TransitionResponse(
+        job_id=result.job_id,
+        action="correct",
+        stage=result.stage,
+        enqueued=result.enqueued,
+        cancelled_jobs=result.cancelled_jobs,
+    )
+
+
 @router.post("/{job_id}/transition", response_model=TransitionResponse)
 async def transition_job(job_id: str, body: TransitionRequest) -> TransitionResponse:
     result = await pipeline.transition(job_id, body.action)
