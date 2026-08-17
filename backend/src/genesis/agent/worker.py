@@ -23,6 +23,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
     function_tool,
+    get_job_context,
 )
 from livekit.plugins import openai as lk_openai
 
@@ -111,6 +112,33 @@ class Receptionist(Agent):
             option: Which new option the customer chose, starting at 1.
         """
         return await T.move_appointment(self.state, option)
+
+    # ------------------------------------------------------------ hang up
+
+    @function_tool
+    async def end_call(self, ctx: RunContext) -> str:
+        """Hang up. Say goodbye to the caller BEFORE calling this.
+
+        Use when the caller says goodbye, says they are done, or the
+        conversation has clearly finished.
+        """
+        # Wait for the goodbye to finish playing. Tearing the room down while
+        # audio is still in flight cuts the agent off mid-word, which sounds
+        # like a crash rather than a hang-up.
+        await ctx.wait_for_playout()
+
+        await decisions.record(
+            business_id=settings.demo_business_id,
+            conversation_id=self.state.conversation_id,
+            customer_id=self.state.customer_id,
+            event_type="call_ended_by_agent",
+            summary="Agent ended the call",
+            tool_name="end_call",
+        )
+
+        job = get_job_context()
+        await job.delete_room()
+        return "Call ended."
 
 
 async def entrypoint(ctx: JobContext) -> None:
