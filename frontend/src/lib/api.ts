@@ -155,6 +155,12 @@ export const api = {
 
   queue: () => request<QueueItem[]>("/api/automation/queue"),
 
+  voiceSession: () =>
+    request<{ url: string; token: string; room: string; identity: string }>(
+      "/api/voice/session",
+      { method: "POST" },
+    ),
+
   updateCustomer: (id: string, body: Partial<CustomerPatch>) =>
     request<{ id: string; full_name: string; reachable: boolean }>(
       `/api/customers/${id}`,

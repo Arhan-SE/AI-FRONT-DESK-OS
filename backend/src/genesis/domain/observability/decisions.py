@@ -35,9 +35,14 @@ async def record(
 ) -> str | None:
     """Record one decision.
 
-    Observability must never take the system down: if this write fails the
-    caller's actual work has already happened and should stand, so the error is
-    logged and swallowed rather than raised.
+    Observability must never take the system down: if this write fails, the
+    caller's actual work should still stand.
+
+    Swallowing the exception is not enough to achieve that. Inside an open
+    transaction a failed statement aborts the whole transaction, so catching
+    the error here would leave the caller committing nothing — a failed audit
+    row would silently undo the booking it was describing. The insert therefore
+    runs inside a savepoint, which is what confines the damage to this row.
     """
     query = """
         insert into ai_decisions
@@ -61,7 +66,10 @@ async def record(
 
     try:
         if conn is not None:
-            return str(await conn.fetchval(query, *args))
+            # Nested transaction == SAVEPOINT. If this insert fails, only the
+            # savepoint rolls back and the caller's transaction stays usable.
+            async with conn.transaction():
+                return str(await conn.fetchval(query, *args))
         return str(await pool.fetchval(query, *args))
     except Exception:
         log.exception("failed to record ai_decision event_type=%s", event_type)
