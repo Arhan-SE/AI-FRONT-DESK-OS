@@ -2,8 +2,16 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Page } from "@/components/AppShell";
 import { ChartFrame, TrendArea, TrendBars, MagnitudeBars } from "@/components/charts";
-import { useDailyActivity } from "@/lib/pageQueries";
+import { useDailyActivity, useUsageSummary } from "@/lib/pageQueries";
 import { api } from "@/lib/api";
+
+const usd = (n: number) =>
+  n >= 1 ? `$${n.toFixed(2)}` : n > 0 ? `$${n.toFixed(4)}` : "$0.00";
+
+const compactTokens = (n: number) =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M`
+  : n >= 1_000 ? `${(n / 1_000).toFixed(1)}K`
+  : String(n);
 import {
   MetricTile,
   Panel,
@@ -57,6 +65,7 @@ export function OverviewPage() {
   const upcoming = useUpcomingAppointments();
   const daily = useDailyActivity();
   const jobs = useJobsForPipeline();
+  const usage = useUsageSummary();
 
   const m = metrics.data;
 
@@ -296,6 +305,44 @@ export function OverviewPage() {
             </tbody>
           </Table>
         )}
+      </Panel>
+
+      {/* AI cost and usage. Lives here rather than on its own page: the
+          decision feed above already covers what the AI did, and this is the
+          only part that was not shown anywhere else. */}
+      <Panel className="mt-6">
+        <PanelHeader
+          title="AI usage"
+          description="Metered from every call and generated message"
+        />
+        <div className="grid grid-cols-2 divide-x divide-line lg:grid-cols-5">
+          {[
+            { label: "Voice calls", value: formatNumber(usage.data?.total_calls) },
+            {
+              label: "Voice minutes",
+              value: usage.data ? Number(usage.data.voice_minutes).toFixed(1) : "—",
+            },
+            {
+              label: "Tokens",
+              value: usage.data ? compactTokens(Number(usage.data.total_tokens)) : "—",
+            },
+            {
+              label: "Decisions",
+              value: formatNumber(usage.data?.total_decisions),
+            },
+            {
+              label: "Cost",
+              value: usage.data ? usd(Number(usage.data.total_cost_usd)) : "—",
+              hint: "at configured rates",
+            },
+          ].map((tile) => (
+            <div key={tile.label} className="px-4 py-3">
+              <div className="t-label">{tile.label}</div>
+              <div className="mt-1 text-[22px] font-semibold leading-tight">{tile.value}</div>
+              {tile.hint ? <div className="t-meta mt-0.5">{tile.hint}</div> : null}
+            </div>
+          ))}
+        </div>
       </Panel>
 
       {m ? (

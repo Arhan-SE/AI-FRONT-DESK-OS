@@ -7,7 +7,7 @@ a correction to a record; marking one paid is an event.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -26,6 +26,73 @@ class InvoiceUpdate(BaseModel):
     due_on: date | None = None
     status: str | None = None
     invoice_number: str | None = Field(default=None, min_length=1, max_length=40)
+
+
+class InvoiceCreate(BaseModel):
+    customer_id: str
+    appointment_id: str | None = None
+    amount: float = Field(ge=0)
+    due_on: date | None = None
+    status: str = "sent"
+
+
+@router.post("", status_code=201)
+async def create_invoice(body: InvoiceCreate) -> dict:
+    """Raise an invoice directly, without going through the pipeline.
+
+    Useful for work that was never entered as a job. Chasing is enqueued the
+    same way, so a hand-raised invoice is chased like any other.
+    """
+    due = body.due_on or (date.today() + timedelta(days=settings.invoice_due_days))
+
+    async with pool.transaction() as conn:
+        number = await conn.fetchval(
+            """select 'INV-' || (coalesce(max(substring(invoice_number from 5)::int), 1000) + 1)
+                 from invoices
+                where business_id = $1 and invoice_number ~ '^INV-[0-9]+$'""",
+            settings.demo_business_id,
+        )
+        invoice_id = await conn.fetchval(
+            """
+            insert into invoices
+              (business_id, customer_id, appointment_id, invoice_number,
+               amount, status, issued_on, due_on)
+            values ($1,$2,$3,$4,$5,$6,current_date,$7)
+            returning id
+            """,
+            settings.demo_business_id,
+            body.customer_id,
+            body.appointment_id,
+            number,
+            body.amount,
+            body.status,
+            due,
+        )
+
+        if body.status in ("sent", "overdue"):
+            await conn.execute(
+                """
+                insert into automation_jobs
+                  (business_id, job_type, scheduled_for, payload, dedupe_key)
+                values ($1, 'payment_reminder', $2, $3::jsonb, $4)
+                on conflict do nothing
+                """,
+                settings.demo_business_id,
+                due + timedelta(days=1),
+                f'{{"invoice_id": "{invoice_id}", "attempt": 1}}',
+                f"invoice:{invoice_id}:reminder:1",
+            )
+
+        await decisions.record(
+            business_id=settings.demo_business_id,
+            customer_id=body.customer_id,
+            event_type="invoice_created",
+            summary=f"Invoice {number} raised manually — Rs {body.amount:,.0f}",
+            detail={"invoice_id": str(invoice_id), "due_on": str(due)},
+            conn=conn,
+        )
+
+    return {"id": str(invoice_id), "invoice_number": number, "due_on": str(due)}
 
 
 @router.patch("/{invoice_id}")

@@ -237,8 +237,9 @@ function JobRow({
 }) {
   const meta = STAGE_META.get(job.stage);
   const terminal = job.stage === "cancelled" || job.stage === "no_show";
-  // Nothing to walk back from the first stage.
-  const correctable = job.stage !== "scheduled" && !terminal;
+  // The dialog handles both correcting and deleting, so it is reachable from
+  // every row — including scheduled and cancelled jobs, which have nothing to
+  // walk back but can still be removed.
 
   return (
     <Tr>
@@ -272,16 +273,14 @@ function JobRow({
       </Td>
       <Td align="right">
         <span className="flex items-center justify-end gap-1.5">
-          {correctable ? (
-            <Button
-              variant="ghost"
-              onClick={onCorrect}
-              disabled={busy}
-              title="Fix a stage set by mistake"
-            >
-              <Undo2 className="size-3.5" strokeWidth={2} />
-            </Button>
-          ) : null}
+          <Button
+            variant="ghost"
+            onClick={onCorrect}
+            disabled={busy}
+            title="Correct the stage, or delete this job"
+          >
+            <Undo2 className="size-3.5" strokeWidth={2} />
+          </Button>
           {CANCELLABLE.includes(job.stage) ? (
             <Button variant="ghost" onClick={() => onMove("cancel")} disabled={busy}>
               Cancel

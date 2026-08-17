@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from genesis.db import pool
 from genesis.domain import pipeline
+from genesis.domain.observability import decisions
 from genesis.settings import settings
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -97,6 +98,60 @@ async def create_job(body: CreateJobRequest) -> TransitionResponse:
         idempotency_key=body.idempotency_key,
     )
     return TransitionResponse(job_id=job_id, action="create", stage="scheduled")
+
+
+@router.delete("/{job_id}")
+async def delete_job(job_id: str) -> dict:
+    """Remove a job entirely, with its invoice and queued work.
+
+    Distinct from cancelling: cancelling records that a booking was called off,
+    deleting says it should never have been recorded. Only the second frees the
+    technician's slot in a way that leaves no trace.
+    """
+    async with pool.transaction() as conn:
+        row = await conn.fetchrow(
+            """select a.id, c.full_name, s.name as service
+                 from appointments a
+                 join customers c on c.id = a.customer_id
+                 join services  s on s.id = a.service_id
+                where a.id = $1 and a.business_id = $2""",
+            job_id,
+            settings.demo_business_id,
+        )
+        if row is None:
+            raise ValueError("Job not found")
+
+        cancelled = await conn.fetchval(
+            """
+            with c as (
+              update automation_jobs set status = 'cancelled', completed_at = now()
+               where business_id = $1 and status = 'pending' and dedupe_key like $2
+              returning 1
+            ) select count(*) from c
+            """,
+            settings.demo_business_id,
+            f"appointment:{job_id}:%",
+        )
+        # invoices.appointment_id is ON DELETE SET NULL, so the paperwork would
+        # otherwise survive its job as an orphan.
+        await conn.execute(
+            """delete from payments where invoice_id in
+                 (select id from invoices where appointment_id = $1)""",
+            job_id,
+        )
+        await conn.execute("delete from invoices where appointment_id = $1", job_id)
+        await conn.execute("delete from appointments where id = $1", job_id)
+
+        await decisions.record(
+            business_id=settings.demo_business_id,
+            event_type="job_deleted",
+            status="pending",
+            summary=f"Job deleted — {row['service']} for {row['full_name']}",
+            detail={"cancelled_jobs": int(cancelled or 0)},
+            conn=conn,
+        )
+
+    return {"deleted": job_id, "cancelled_jobs": int(cancelled or 0)}
 
 
 class CorrectionRequest(BaseModel):

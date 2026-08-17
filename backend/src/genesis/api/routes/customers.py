@@ -78,6 +78,57 @@ async def create_customer(body: CustomerCreate) -> dict:
     return {"id": str(row["id"]), "full_name": row["full_name"]}
 
 
+@router.delete("/{customer_id}")
+async def delete_customer(customer_id: str) -> dict:
+    """Remove a customer and everything belonging to them.
+
+    Reports what it removed rather than doing it silently — deleting a customer
+    with jobs and invoices attached destroys more than the row you clicked.
+    """
+    async with pool.transaction() as conn:
+        row = await conn.fetchrow(
+            """
+            select c.full_name,
+                   (select count(*) from appointments a where a.customer_id = c.id) as jobs,
+                   (select count(*) from invoices i where i.customer_id = c.id) as invoices
+              from customers c
+             where c.id = $1 and c.business_id = $2
+            """,
+            customer_id,
+            settings.demo_business_id,
+        )
+        if row is None:
+            raise ValueError("Customer not found")
+
+        # Cancel queued work first: a message about a customer who no longer
+        # exists would fail noisily in the worker for no reason.
+        await conn.execute(
+            """update automation_jobs set status = 'cancelled', completed_at = now()
+                where business_id = $1 and status = 'pending'
+                  and payload->>'appointment_id' in (
+                    select id::text from appointments where customer_id = $2)""",
+            settings.demo_business_id,
+            customer_id,
+        )
+        await conn.execute("delete from customers where id = $1", customer_id)
+
+        await decisions.record(
+            business_id=settings.demo_business_id,
+            event_type="customer_deleted",
+            status="pending",
+            summary=f"{row['full_name']} deleted — {row['jobs']} job(s), {row['invoices']} invoice(s)",
+            detail={"jobs": row["jobs"], "invoices": row["invoices"]},
+            conn=conn,
+        )
+
+    return {
+        "deleted": customer_id,
+        "name": row["full_name"],
+        "jobs_removed": row["jobs"],
+        "invoices_removed": row["invoices"],
+    }
+
+
 @router.patch("/{customer_id}")
 async def update_customer(customer_id: str, body: CustomerUpdate) -> dict:
     changes = {

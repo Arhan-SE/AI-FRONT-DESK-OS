@@ -10,7 +10,6 @@ import {
   Megaphone,
   Star,
   Receipt,
-  ChartNoAxesColumn,
   Settings,
   PhoneCall,
 } from "lucide-react";
@@ -22,7 +21,6 @@ const groups = [
     label: null,
     items: [
       { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
-      { to: "/activity", label: "AI Activity", icon: Activity },
     ],
   },
   {
@@ -41,7 +39,6 @@ const groups = [
       { to: "/campaigns", label: "Campaigns", icon: Megaphone },
       { to: "/reviews", label: "Reviews", icon: Star },
       { to: "/payments", label: "Payments", icon: Receipt },
-      { to: "/insights", label: "Insights", icon: ChartNoAxesColumn },
     ],
   },
   {

@@ -6,13 +6,14 @@ import {
 } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/controls";
 import { useCustomers, type CustomerRow } from "@/lib/pageQueries";
-import { EditCustomerDialog } from "./EditCustomerDialog";
+import { CustomerDialog } from "./CustomerDialog";
 import { formatCurrency, formatRelative } from "@/lib/format";
-import { Users } from "lucide-react";
+import { Users, Plus } from "lucide-react";
 
 export function CustomersPage() {
   const customers = useCustomers();
   const [editing, setEditing] = useState<CustomerRow | null>(null);
+  const [creating, setCreating] = useState(false);
   const all = customers.data ?? [];
 
   const reachable = all.filter((c) => c.reachable).length;
@@ -20,7 +21,15 @@ export function CustomersPage() {
   const collected = all.reduce((t, c) => t + Number(c.total_paid), 0);
 
   return (
-    <Page title="Customers">
+    <Page
+      title="Customers"
+      action={
+        <Button variant="primary" onClick={() => setCreating(true)}>
+          <Plus className="size-3.5" strokeWidth={2} />
+          New customer
+        </Button>
+      }
+    >
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricTile label="Customers" value={all.length} loading={customers.isPending} />
         <MetricTile
@@ -94,7 +103,11 @@ export function CustomersPage() {
         )}
       </Panel>
 
-      <EditCustomerDialog customer={editing} onClose={() => setEditing(null)} />
+      <CustomerDialog
+        open={editing !== null || creating}
+        customer={editing}
+        onClose={() => { setEditing(null); setCreating(false); }}
+      />
     </Page>
   );
 }

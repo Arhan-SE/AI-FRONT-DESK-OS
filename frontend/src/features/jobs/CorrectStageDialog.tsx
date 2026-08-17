@@ -47,6 +47,7 @@ export function CorrectStageDialog({
   const qc = useQueryClient();
   const [target, setTarget] = useState<Stage>("completed");
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!job) return;
@@ -54,6 +55,7 @@ export function CorrectStageDialog({
     const idx = ORDER.indexOf(job.stage);
     setTarget(idx > 0 ? ORDER[idx - 1] : "scheduled");
     setError(null);
+    setConfirmDelete(false);
   }, [job]);
 
   const correct = useMutation({
@@ -69,6 +71,19 @@ export function CorrectStageDialog({
       setError(e instanceof ApiError ? e.message : "Could not correct the stage."),
   });
 
+  const remove = useMutation({
+    mutationFn: () => api.deleteJob(job!.id),
+    onSuccess: () => {
+      for (const key of ["jobs", "invoices", "customers", "ai-decisions",
+                         "dashboard-metrics", "daily-activity", "appointments"]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
+      onClose();
+    },
+    onError: (e: unknown) =>
+      setError(e instanceof ApiError ? e.message : "Could not delete the job."),
+  });
+
   const undone = job ? consequences(job.stage, target) : [];
 
   return (
@@ -78,6 +93,17 @@ export function CorrectStageDialog({
       title="Correct stage"
       footer={
         <>
+          {/* Deleting says the job should never have been recorded; correcting
+              says its stage was wrong. Different intents, different buttons. */}
+          <Button
+            variant="ghost"
+            loading={remove.isPending}
+            className={confirmDelete ? "text-critical" : ""}
+            onClick={() => (confirmDelete ? remove.mutate() : setConfirmDelete(true))}
+          >
+            {confirmDelete ? "Confirm delete" : "Delete job"}
+          </Button>
+          <span className="flex-1" />
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={correct.isPending} onClick={() => correct.mutate()}>
             Move to {STAGES.find((s) => s.value === target)?.label}
@@ -119,6 +145,12 @@ export function CorrectStageDialog({
           <p className="t-meta">
             Messages already sent cannot be recalled — only pending work is cancelled.
           </p>
+
+          {confirmDelete ? (
+            <p className="text-[12px] text-critical">
+              This removes the job, its invoice and any queued messages entirely.
+            </p>
+          ) : null}
 
           <InlineError message={error} />
         </>

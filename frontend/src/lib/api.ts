@@ -162,6 +162,57 @@ export const api = {
 
   queue: () => request<QueueItem[]>("/api/automation/queue"),
 
+  deleteCustomer: (id: string) =>
+    request<{ deleted: string; name: string; jobs_removed: number; invoices_removed: number }>(
+      `/api/customers/${id}`,
+      { method: "DELETE" },
+    ),
+
+  deleteJob: (id: string) =>
+    request<{ deleted: string; cancelled_jobs: number }>(`/api/jobs/${id}`, {
+      method: "DELETE",
+    }),
+
+  createLead: (body: {
+    customer_id?: string | null;
+    service_id?: string | null;
+    location?: string | null;
+    urgency?: string | null;
+    preferred_timing?: string | null;
+    notes?: string | null;
+  }) =>
+    request<{ id: string; score: number; classification: string }>("/api/leads", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateLead: (
+    id: string,
+    body: Partial<{
+      status: string; urgency: string; location: string;
+      preferred_timing: string; next_action: string; notes: string;
+    }>,
+  ) =>
+    request<{ id: string; status: string }>(`/api/leads/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteLead: (id: string) =>
+    request<{ deleted: string }>(`/api/leads/${id}`, { method: "DELETE" }),
+
+  createInvoice: (body: {
+    customer_id: string;
+    appointment_id?: string | null;
+    amount: number;
+    due_on?: string | null;
+    status?: string;
+  }) =>
+    request<{ id: string; invoice_number: string; due_on: string }>("/api/invoices", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   updateInvoice: (
     id: string,
     body: Partial<{ amount: number; due_on: string; status: string; invoice_number: string }>,

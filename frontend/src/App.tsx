@@ -12,7 +12,6 @@ import { ReviewsPage } from "@/features/reviews/ReviewsPage";
 import { LeadsPage } from "@/features/leads/LeadsPage";
 import { VoiceCallPage } from "@/features/voice/VoiceCallPage";
 import { ConversationsPage } from "@/features/conversations/ConversationsPage";
-import { AiActivityPage } from "@/features/activity/AiActivityPage";
 import { Hammer } from "lucide-react";
 
 const queryClient = new QueryClient({
@@ -42,7 +41,6 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <OverviewPage /> },
       { path: "jobs", element: <JobsPage /> },
-      { path: "activity", element: <AiActivityPage /> },
       { path: "leads", element: <LeadsPage /> },
       { path: "customers", element: <CustomersPage /> },
       { path: "appointments", element: <AppointmentsPage /> },
@@ -50,7 +48,6 @@ const router = createBrowserRouter([
       { path: "campaigns", element: <CampaignsPage /> },
       { path: "reviews", element: <ReviewsPage /> },
       { path: "payments", element: <PaymentsPage /> },
-      { path: "insights", element: <Placeholder title="Insights" /> },
       { path: "demo", element: <VoiceCallPage /> },
       { path: "settings", element: <Placeholder title="Settings" /> },
     ],

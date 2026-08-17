@@ -3,9 +3,12 @@ import {
   Panel, PanelHeader, MetricTile, Table, Th, Td, Tr, StatusDot, Tag,
   EmptyState, ErrorState, TableSkeleton, type Tone,
 } from "@/components/ui/primitives";
-import { useLeads, useLeadScores } from "@/lib/pageQueries";
+import { useState } from "react";
+import { useLeads, useLeadScores, type LeadRow } from "@/lib/pageQueries";
+import { LeadDialog } from "./LeadDialog";
+import { Button } from "@/components/ui/controls";
 import { formatRelative } from "@/lib/format";
-import { Target } from "lucide-react";
+import { Target, Plus } from "lucide-react";
 
 const CLASS_TONE: Record<string, Tone> = {
   HOT: "critical", WARM: "warning", COLD: "neutral",
@@ -14,6 +17,8 @@ const CLASS_TONE: Record<string, Tone> = {
 export function LeadsPage() {
   const leads = useLeads();
   const scores = useLeadScores();
+  const [editing, setEditing] = useState<LeadRow | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const all = leads.data ?? [];
   const byLead = new Map((scores.data ?? []).map((s) => [s.lead_id, s]));
@@ -24,7 +29,15 @@ export function LeadsPage() {
   const rate = all.length ? Math.round((converted / all.length) * 100) : 0;
 
   return (
-    <Page title="Leads">
+    <Page
+      title="Leads"
+      action={
+        <Button variant="primary" onClick={() => setCreating(true)}>
+          <Plus className="size-3.5" strokeWidth={2} />
+          New lead
+        </Button>
+      }
+    >
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricTile label="Total leads" value={all.length} loading={leads.isPending} />
         <MetricTile label="Open" value={open} loading={leads.isPending} />
@@ -61,7 +74,7 @@ export function LeadsPage() {
               {all.map((lead) => {
                 const score = byLead.get(lead.id);
                 return (
-                  <Tr key={lead.id}>
+                  <Tr key={lead.id} onClick={() => setEditing(lead)}>
                     <Td className="font-medium">{lead.customers?.full_name ?? "Unknown caller"}</Td>
                     <Td className="text-ink-muted">{lead.requested_service ?? "—"}</Td>
                     <Td align="right" className="font-mono font-medium">
@@ -91,6 +104,12 @@ export function LeadsPage() {
           </Table>
         )}
       </Panel>
+
+      <LeadDialog
+        open={editing !== null || creating}
+        lead={editing}
+        onClose={() => { setEditing(null); setCreating(false); }}
+      />
     </Page>
   );
 }

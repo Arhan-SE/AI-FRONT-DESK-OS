@@ -10,7 +10,7 @@ import { useInvoices, type Invoice } from "@/lib/pageQueries";
 import { EditInvoiceDialog } from "./EditInvoiceDialog";
 import { api, ApiError } from "@/lib/api";
 import { formatCurrency, formatCurrencyCompact, formatDate, formatRelative } from "@/lib/format";
-import { Receipt, Play } from "lucide-react";
+import { Receipt, Play, Plus } from "lucide-react";
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
   paid: { label: "Paid", tone: "success" },
@@ -24,6 +24,7 @@ export function PaymentsPage() {
   const qc = useQueryClient();
   const invoices = useInvoices();
   const [editing, setEditing] = useState<Invoice | null>(null);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const runDue = useMutation({
@@ -47,11 +48,17 @@ export function PaymentsPage() {
     <Page
       title="Payments"
       action={
-        <Button onClick={() => runDue.mutate()} loading={runDue.isPending}
-          title="Advance scheduled reminders to now and send them">
-          <Play className="size-3.5" strokeWidth={2} />
-          Send due reminders
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => runDue.mutate()} loading={runDue.isPending}
+            title="Advance scheduled reminders to now and send them">
+            <Play className="size-3.5" strokeWidth={2} />
+            Send due reminders
+          </Button>
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Plus className="size-3.5" strokeWidth={2} />
+            New invoice
+          </Button>
+        </div>
       }
     >
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -145,7 +152,11 @@ export function PaymentsPage() {
         )}
       </Panel>
 
-      <EditInvoiceDialog invoice={editing} onClose={() => setEditing(null)} />
+      <EditInvoiceDialog
+        open={editing !== null || creating}
+        invoice={editing}
+        onClose={() => { setEditing(null); setCreating(false); }}
+      />
     </Page>
   );
 }

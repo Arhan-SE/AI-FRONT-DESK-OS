@@ -15,7 +15,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from genesis.api.errors import register_error_handlers
-from genesis.api.routes import automation, campaigns, customers, invoices, jobs, voice
+from genesis.api.routes import (
+    automation,
+    campaigns,
+    customers,
+    invoices,
+    jobs,
+    leads,
+    voice,
+)
 from genesis.db import pool
 from genesis.settings import settings
 
@@ -66,6 +74,7 @@ app.include_router(campaigns.router)
 app.include_router(customers.router)
 app.include_router(voice.router)
 app.include_router(invoices.router)
+app.include_router(leads.router)
 
 
 @app.get("/health", tags=["system"])
