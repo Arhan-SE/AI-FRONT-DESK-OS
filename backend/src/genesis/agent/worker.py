@@ -117,15 +117,20 @@ class Receptionist(Agent):
 
     @function_tool
     async def find_available_times(
-        self, _: RunContext, service: str, preferred_time: str = ""
+        self,
+        _: RunContext,
+        service: str,
+        preferred_time: str = "",
+        location: str = "",
     ) -> str:
         """Find real bookable times for a service and hold them briefly.
 
         Args:
             service: The service wanted, e.g. "AC service" or "gas refill".
             preferred_time: Optional — "morning", "afternoon" or "evening".
+            location: The customer's area, e.g. "Indiranagar". Ask if unknown.
         """
-        return await T.find_slots(self.state, service, preferred_time)
+        return await T.find_slots(self.state, service, preferred_time, location)
 
     @function_tool
     async def book_the_appointment(self, _: RunContext, option: int) -> str:

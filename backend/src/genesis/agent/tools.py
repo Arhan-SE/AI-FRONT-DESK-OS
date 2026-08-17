@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass, field
 
 from genesis.db import pool
+from genesis.domain.leads import scoring as leads_scoring
 from genesis.domain.observability import decisions
 from genesis.domain.scheduling import availability, booking
 from genesis.settings import settings
@@ -46,6 +47,8 @@ class SessionState:
     customer_name: str | None = None
     service_id: str | None = None
     service_name: str | None = None
+    location: str | None = None
+    lead_id: str | None = None
     offered: list[booking.HeldSlot] = field(default_factory=list)
     found_appointment_id: str | None = None
     safety_triggered: bool = False
@@ -155,8 +158,18 @@ async def list_services(state: SessionState) -> str:
 # ---------------------------------------------------------------- slots
 
 
-async def find_slots(state: SessionState, service: str, preferred_time: str = "") -> str:
-    """Look up real availability and hold what is offered."""
+async def find_slots(
+    state: SessionState,
+    service: str,
+    preferred_time: str = "",
+    location: str = "",
+) -> str:
+    """Look up real availability and hold what is offered.
+
+    Also the point at which the lead is qualified: by now we know what they
+    want and where they are, which is everything the scorer needs. Doing it
+    here rather than as its own tool means the model cannot forget to.
+    """
     row = await pool.fetchrow(
         """select id, name from services
             where business_id = $1 and is_active and lower(name) like '%' || lower($2) || '%'
@@ -177,6 +190,8 @@ async def find_slots(state: SessionState, service: str, preferred_time: str = ""
 
     state.service_id = str(row["id"])
     state.service_name = row["name"]
+    if location.strip():
+        state.location = location.strip()
 
     window = None
     lowered = preferred_time.lower()
@@ -184,6 +199,26 @@ async def find_slots(state: SessionState, service: str, preferred_time: str = ""
         if w in lowered:
             window = w
             break
+
+    # Qualify before checking the calendar: a lead is worth recording even if
+    # there turns out to be no availability at all.
+    lead_id, score = await leads_scoring.upsert_lead(
+        conversation_id=state.conversation_id,
+        customer_id=state.customer_id,
+        service_id=state.service_id,
+        service_name=state.service_name,
+        location=state.location,
+        preferred_timing=window,
+    )
+    state.lead_id = lead_id
+    await _log(
+        state,
+        "lead_scored",
+        f"Lead scored {score.score}/100 — {score.classification}",
+        score=score.score,
+        classification=score.classification,
+        factors=score.factors,
+    )
 
     slots = await availability.compute(
         service_id=state.service_id,
@@ -238,6 +273,24 @@ async def confirm_booking(state: SessionState, option: int) -> str:
         return f"{exc} Look up availability again."
 
     state.offered = []
+
+    # Rescore now that they have committed. Booking is the strongest intent
+    # signal there is, so the lead should not stay at its enquiry-time score.
+    _, score = await leads_scoring.upsert_lead(
+        conversation_id=state.conversation_id,
+        customer_id=state.customer_id,
+        service_id=state.service_id,
+        service_name=state.service_name,
+        location=state.location,
+        booked=True,
+    )
+    await _log(
+        state,
+        "lead_converted",
+        f"Lead converted — rescored {score.score}/100 ({score.classification})",
+        score=score.score,
+    )
+
     return (
         f"Booked. Confirm to the customer: {result['service']} on "
         f"{result['when']} with {result['technician']}."
