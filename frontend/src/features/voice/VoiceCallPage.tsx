@@ -13,7 +13,7 @@ import { Button, InlineError } from "@/components/ui/controls";
 import { useActivityFeed, useActivityFeedRealtime } from "@/lib/queries";
 import { api, ApiError } from "@/lib/api";
 import { formatClock } from "@/lib/format";
-import { Phone, PhoneOff, Mic, Radio } from "lucide-react";
+import { Phone, PhoneOff, Mic, MicOff, Radio } from "lucide-react";
 
 /**
  * Every connection state is visible. A call UI that shows nothing between
@@ -56,6 +56,7 @@ export function VoiceCallPage() {
   const [error, setError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [level, setLevel] = useState(0);
+  const [muted, setMuted] = useState(false);
 
   const roomRef = useRef<Room | null>(null);
   const cleanupAnalyser = useRef<(() => void) | null>(null);
@@ -71,7 +72,17 @@ export function VoiceCallPage() {
     await roomRef.current?.disconnect();
     roomRef.current = null;
     setLevel(0);
+    setMuted(false);
   }, []);
+
+  /** Stops publishing audio entirely — the agent hears silence, not quiet. */
+  const toggleMute = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    const next = !muted;
+    await room.localParticipant.setMicrophoneEnabled(!next);
+    setMuted(next);
+  }, [muted]);
 
   useEffect(() => () => void teardown(), [teardown]);
 
@@ -198,13 +209,21 @@ export function VoiceCallPage() {
             )}
 
             {live ? (
-              <span className="flex items-center gap-2">
-                <Mic className="size-3.5 text-ink-muted" strokeWidth={1.75} />
+              <>
+                <Button onClick={toggleMute} title={muted ? "Unmute" : "Mute your microphone"}>
+                  {muted ? (
+                    <MicOff className="size-3.5 text-critical" strokeWidth={2} />
+                  ) : (
+                    <Mic className="size-3.5" strokeWidth={2} />
+                  )}
+                  {muted ? "Muted" : "Mute"}
+                </Button>
+
                 {/* Real microphone level, not an animation — a flat bar means
                     the mic genuinely is not picking anything up. */}
                 <span className="flex h-4 items-center gap-[2px]" aria-hidden>
                   {Array.from({ length: 24 }).map((_, i) => {
-                    const active = level * 24 * 1.6 > i;
+                    const active = !muted && level * 24 * 1.6 > i;
                     return (
                       <span key={i}
                         className={active ? "w-[2px] bg-ink" : "w-[2px] bg-line-strong"}
@@ -212,7 +231,13 @@ export function VoiceCallPage() {
                     );
                   })}
                 </span>
-              </span>
+
+                {muted ? (
+                  <span className="t-meta text-critical">
+                    The agent cannot hear you
+                  </span>
+                ) : null}
+              </>
             ) : null}
           </div>
 

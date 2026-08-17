@@ -182,6 +182,77 @@ export function useLeadScores() {
   });
 }
 
+/* ------------------------------------------------------------- conversations */
+
+export interface ConversationRow {
+  id: string;
+  channel: string;
+  status: string;
+  summary: string | null;
+  current_intent: string | null;
+  started_at: string;
+  ended_at: string | null;
+  customers: { full_name: string } | null;
+}
+
+export function useConversations() {
+  return useQuery({
+    queryKey: ["conversations"],
+    queryFn: async () =>
+      unwrap(
+        await supabase
+          .from("conversations")
+          .select("id,channel,status,summary,current_intent,started_at,ended_at,customers(full_name)")
+          .eq("business_id", BUSINESS_ID)
+          .order("started_at", { ascending: false })
+          .limit(50),
+      ) as unknown as ConversationRow[],
+    refetchInterval: 10_000,
+  });
+}
+
+export interface MessageRow {
+  id: string;
+  role: "customer" | "agent" | "system" | "human";
+  content: string;
+  created_at: string;
+}
+
+export function useMessages(conversationId: string | null) {
+  return useQuery({
+    queryKey: ["messages", conversationId],
+    enabled: conversationId !== null,
+    queryFn: async () =>
+      unwrap(
+        await supabase
+          .from("messages")
+          .select("id,role,content,created_at")
+          .eq("business_id", BUSINESS_ID)
+          .eq("conversation_id", conversationId!)
+          .order("created_at", { ascending: true }),
+      ) as MessageRow[],
+    // A call in progress should stream into the panel while it happens.
+    refetchInterval: 4_000,
+  });
+}
+
+export function useConversationDecisions(conversationId: string | null) {
+  return useQuery({
+    queryKey: ["conversation-decisions", conversationId],
+    enabled: conversationId !== null,
+    queryFn: async () =>
+      unwrap(
+        await supabase
+          .from("ai_decisions")
+          .select("id,event_type,status,summary,created_at")
+          .eq("business_id", BUSINESS_ID)
+          .eq("conversation_id", conversationId!)
+          .order("created_at", { ascending: true }),
+      ) as { id: string; event_type: string; status: string; summary: string; created_at: string }[],
+    refetchInterval: 4_000,
+  });
+}
+
 /* -------------------------------------------------------------------- reviews */
 
 export interface ReviewRow {

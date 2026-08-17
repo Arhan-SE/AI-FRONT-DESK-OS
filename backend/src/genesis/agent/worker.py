@@ -43,6 +43,50 @@ GREETING = (
 )
 
 
+async def _summarise(conversation_id: str) -> str | None:
+    """One line describing what the call was about, for the Conversations list.
+
+    Best-effort: a call that cannot be summarised is still a call worth having
+    a transcript of, so failure returns None and leaves the column untouched.
+    """
+    rows = await pool.fetch(
+        """select role, content from messages
+            where conversation_id = $1 order by created_at limit 40""",
+        conversation_id,
+    )
+    if not rows:
+        return None
+
+    transcript = "\n".join(
+        f"{'Customer' if r['role'] == 'customer' else 'AI'}: {r['content']}" for r in rows
+    )
+
+    try:
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=10.0)
+        response = await client.chat.completions.create(
+            model=settings.reasoning_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Summarise this phone call in one short sentence, from the "
+                        "business's point of view. State what the customer wanted and "
+                        "what happened. No preamble."
+                    ),
+                },
+                {"role": "user", "content": transcript[:4000]},
+            ],
+            max_tokens=60,
+            temperature=0.2,
+        )
+        return (response.choices[0].message.content or "").strip() or None
+    except Exception:
+        log.warning("could not summarise conversation %s", conversation_id, exc_info=True)
+        return None
+
+
 class Receptionist(Agent):
     def __init__(self, state: T.SessionState) -> None:
         super().__init__(instructions=PROMPT)
@@ -172,6 +216,34 @@ async def entrypoint(ctx: JobContext) -> None:
         )
     )
 
+    # Persist both sides of the conversation as it happens, rather than trying
+    # to reconstruct it at the end. A call that drops mid-sentence still leaves
+    # a readable transcript behind.
+    @session.on("conversation_item_added")
+    def _on_item(event) -> None:
+        item = getattr(event, "item", None)
+        role = getattr(item, "role", None)
+        if role not in ("user", "assistant"):
+            return
+
+        content = getattr(item, "content", None) or []
+        text = " ".join(c for c in content if isinstance(c, str)).strip()
+        if not text:
+            return
+
+        ctx.create_task(
+            pool.execute(
+                """
+                insert into messages (business_id, conversation_id, role, content)
+                values ($1, $2, $3, $4)
+                """,
+                settings.demo_business_id,
+                conversation_id,
+                "customer" if role == "user" else "agent",
+                text,
+            )
+        )
+
     # The safety tripwire runs on every transcribed user turn, before the model
     # gets a chance to decide anything. A tripwire the model can choose not to
     # pull is not a tripwire.
@@ -200,9 +272,15 @@ async def entrypoint(ctx: JobContext) -> None:
     async def _cleanup() -> None:
         # Holds left behind would sterilise the calendar until they expire.
         released = await booking.release(str(conversation_id))
+        summary = await _summarise(str(conversation_id))
         await pool.execute(
-            "update conversations set status = 'ended', ended_at = now() where id = $1",
+            """
+            update conversations
+               set status = 'ended', ended_at = now(), summary = coalesce($2, summary)
+             where id = $1
+            """,
             conversation_id,
+            summary,
         )
         await decisions.record(
             business_id=settings.demo_business_id,
