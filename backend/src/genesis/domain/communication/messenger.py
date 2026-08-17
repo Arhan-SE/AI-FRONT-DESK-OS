@@ -210,8 +210,12 @@ async def _record_failure(
 _LABELS: dict[MessageType, str] = {
     MessageType.APPOINTMENT_CONFIRMATION: "Booking confirmation",
     MessageType.APPOINTMENT_REMINDER: "Appointment reminder",
+    MessageType.JOB_STARTED: "Technician on the way",
+    MessageType.JOB_COMPLETED: "Work completed",
+    MessageType.APPOINTMENT_CANCELLED: "Cancellation notice",
     MessageType.POST_SERVICE_FOLLOWUP: "Post-service follow-up",
     MessageType.INVOICE_SENT: "Invoice",
+    MessageType.PAYMENT_RECEIVED: "Payment receipt",
     MessageType.PAYMENT_REMINDER: "Payment reminder",
     MessageType.REVIEW_REQUEST: "Review request",
     MessageType.REACTIVATION: "Reactivation message",

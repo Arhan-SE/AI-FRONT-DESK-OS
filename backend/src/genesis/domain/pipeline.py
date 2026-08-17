@@ -34,6 +34,10 @@ class Stage(StrEnum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     INVOICE_SENT = "invoice_sent"
+    JOB_STARTED = "job_started"
+    JOB_COMPLETED = "job_completed"
+    APPOINTMENT_CANCELLED = "appointment_cancelled"
+    PAYMENT_RECEIVED = "payment_received"
     PAID = "paid"
     OVERDUE = "overdue"
     CANCELLED = "cancelled"
@@ -54,6 +58,10 @@ class JobType(StrEnum):
     APPOINTMENT_CONFIRMATION = "appointment_confirmation"
     APPOINTMENT_REMINDER = "appointment_reminder"
     INVOICE_SENT = "invoice_sent"
+    JOB_STARTED = "job_started"
+    JOB_COMPLETED = "job_completed"
+    APPOINTMENT_CANCELLED = "appointment_cancelled"
+    PAYMENT_RECEIVED = "payment_received"
     POST_SERVICE_FOLLOWUP = "post_service_followup"
     REVIEW_REQUEST = "review_request"
     PAYMENT_REMINDER = "payment_reminder"
@@ -338,7 +346,21 @@ async def transition(job_id: str, action: Action) -> TransitionResult:
                 job["invoice_id"],
             )
             # Chasing a paid invoice is the classic automation embarrassment.
-            cancelled = await _cancel_pending(conn, f"invoice:{job['invoice_id']}:")
+            # Scoped to reminders only: the issuance notice under
+            # `invoice:<id>:issued` is the bill itself, and cancelling that
+            # because payment arrived first means the customer is never told
+            # what they paid for.
+            cancelled = await _cancel_pending(conn, f"invoice:{job['invoice_id']}:reminder")
+
+            # Enqueued after the sweep, or it would cancel its own receipt.
+            await _enqueue(
+                conn,
+                job_type=JobType.PAYMENT_RECEIVED,
+                scheduled_for=now,
+                payload={"invoice_id": str(job["invoice_id"])},
+                dedupe_key=f"receipt:{job['invoice_id']}",
+            )
+            enqueued.append("payment_received")
 
             await decisions.record(
                 business_id=settings.demo_business_id,
@@ -388,11 +410,28 @@ async def transition(job_id: str, action: Action) -> TransitionResult:
                 )
                 enqueued.append("appointment_reminder")
 
+        elif action is Action.START:
+            await _enqueue(
+                conn,
+                job_type=JobType.JOB_STARTED,
+                scheduled_for=now,
+                payload={"appointment_id": job_id},
+                dedupe_key=f"appointment:{job_id}:started",
+            )
+            enqueued.append("job_started")
+
         elif action is Action.COMPLETE:
             # A reminder for a job that has already happened is worse than no
             # reminder. Once the work is done, the pre-visit reminder is dead.
             cancelled = await _cancel_pending(conn, f"appointment:{job_id}:reminder")
 
+            await _enqueue(
+                conn,
+                job_type=JobType.JOB_COMPLETED,
+                scheduled_for=now,
+                payload={"appointment_id": job_id},
+                dedupe_key=f"appointment:{job_id}:completed",
+            )
             await _enqueue(
                 conn,
                 job_type=JobType.POST_SERVICE_FOLLOWUP,
@@ -407,11 +446,23 @@ async def transition(job_id: str, action: Action) -> TransitionResult:
                 payload={"appointment_id": job_id},
                 dedupe_key=f"appointment:{job_id}:review",
             )
-            enqueued += ["post_service_followup", "review_request"]
+            enqueued += ["job_completed", "post_service_followup", "review_request"]
 
         elif action in (Action.CANCEL, Action.NO_SHOW):
             # Nothing scheduled for this job should still fire.
             cancelled = await _cancel_pending(conn, f"appointment:{job_id}:")
+
+            # Queued after the sweep above, otherwise it cancels itself. A
+            # no-show is the customer's absence, not ours — no apology sent.
+            if action is Action.CANCEL:
+                await _enqueue(
+                    conn,
+                    job_type=JobType.APPOINTMENT_CANCELLED,
+                    scheduled_for=now,
+                    payload={"appointment_id": job_id},
+                    dedupe_key=f"cancelled:{job_id}",
+                )
+                enqueued.append("appointment_cancelled")
 
         await decisions.record(
             business_id=settings.demo_business_id,
@@ -493,7 +544,7 @@ async def correct_stage(job_id: str, target: Stage) -> TransitionResult:
                     "delete from payments where invoice_id = $1", job["invoice_id"]
                 )
                 await conn.execute("delete from invoices where id = $1", job["invoice_id"])
-                cancelled += await _cancel_pending(conn, f"invoice:{job['invoice_id']}:")
+                cancelled += await _cancel_pending(conn, f"invoice:{job['invoice_id']}:reminder")
                 undone.append("invoice removed")
 
         elif target is Stage.INVOICE_SENT and job["invoice_id"]:

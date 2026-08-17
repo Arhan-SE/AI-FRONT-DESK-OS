@@ -64,6 +64,14 @@ INTENT: dict[MessageType, str] = {
         "Confirm the booking and tell them who is coming and when.",
     MessageType.APPOINTMENT_REMINDER:
         "Remind them about tomorrow's visit. Offer to reschedule if needed.",
+    MessageType.JOB_STARTED:
+        "Tell them the technician is on the way now. One line, reassuring.",
+    MessageType.JOB_COMPLETED:
+        "Tell them the work is finished. Brief and warm. Do not ask for "
+        "anything and do not mention payment — an invoice follows separately.",
+    MessageType.APPOINTMENT_CANCELLED:
+        "Tell them the booking has been cancelled. Apologetic but not "
+        "grovelling. Invite them to rebook whenever suits.",
     MessageType.POST_SERVICE_FOLLOWUP:
         "Check the work is holding up. Invite them to reply if anything is wrong.",
     MessageType.REVIEW_REQUEST:
@@ -71,6 +79,8 @@ INTENT: dict[MessageType, str] = {
     MessageType.INVOICE_SENT:
         "Send them the bill for work just completed. State the amount and when "
         "it is due. Friendly, not a demand — nothing is late yet.",
+    MessageType.PAYMENT_RECEIVED:
+        "Thank them, payment received, nothing outstanding. Two lines at most.",
     MessageType.PAYMENT_REMINDER:
         "Politely remind them the invoice is unpaid. Do not be aggressive, "
         "even on a later reminder. Ask them to reply once it is settled.",

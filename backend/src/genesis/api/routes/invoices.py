@@ -147,7 +147,7 @@ async def update_invoice(invoice_id: str, body: InvoiceUpdate) -> dict:
                     where business_id = $1 and status = 'pending'
                       and dedupe_key like $2""",
                 settings.demo_business_id,
-                f"invoice:{invoice_id}:%",
+                f"invoice:{invoice_id}:reminder%",
             )
         elif changes.get("status") in ("sent", "overdue", "draft", "void"):
             await conn.execute("delete from payments where invoice_id = $1", invoice_id)

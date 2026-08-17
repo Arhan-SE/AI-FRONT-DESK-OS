@@ -100,6 +100,67 @@ async def appointment_reminder(payload: dict) -> SendResult:
     )
 
 
+async def _appointment_update(payload: dict, message_type: MessageType) -> SendResult:
+    """Shared body for the plain status notices — started, completed, cancelled.
+
+    They differ only in wording, which lives in the template and the
+    personalisation brief rather than in three near-identical functions.
+    """
+    appt = await _appointment_context(payload["appointment_id"])
+    if appt is None:
+        raise ValueError("Appointment no longer exists")
+
+    return await send_customer_message(
+        business_id=settings.demo_business_id,
+        customer_id=str(appt["customer_id"]),
+        message_type=message_type,
+        context={
+            "name": appt["customer_name"].split()[0],
+            "service": appt["service_name"],
+            "technician": appt["technician_name"],
+            "when": _when(appt["starts_at"]),
+            "date": _date(appt["starts_at"]),
+        },
+        dedupe_key=str(appt["id"]),
+    )
+
+
+async def job_started(payload: dict) -> SendResult:
+    return await _appointment_update(payload, MessageType.JOB_STARTED)
+
+
+async def job_completed(payload: dict) -> SendResult:
+    return await _appointment_update(payload, MessageType.JOB_COMPLETED)
+
+
+async def appointment_cancelled(payload: dict) -> SendResult:
+    return await _appointment_update(payload, MessageType.APPOINTMENT_CANCELLED)
+
+
+async def payment_received(payload: dict) -> SendResult:
+    invoice = await pool.fetchrow(
+        """select i.id, i.invoice_number, i.amount, i.customer_id, c.full_name
+             from invoices i join customers c on c.id = i.customer_id
+            where i.id = $1 and i.business_id = $2""",
+        payload["invoice_id"],
+        settings.demo_business_id,
+    )
+    if invoice is None:
+        raise ValueError("Invoice no longer exists")
+
+    return await send_customer_message(
+        business_id=settings.demo_business_id,
+        customer_id=str(invoice["customer_id"]),
+        message_type=MessageType.PAYMENT_RECEIVED,
+        context={
+            "name": invoice["full_name"].split()[0],
+            "invoice": invoice["invoice_number"],
+            "amount": f"{invoice['amount']:,.0f}",
+        },
+        dedupe_key=str(invoice["id"]),
+    )
+
+
 async def post_service_followup(payload: dict) -> SendResult:
     appt = await _appointment_context(payload["appointment_id"])
     if appt is None:
@@ -337,6 +398,10 @@ async def campaign_message(payload: dict) -> SendResult:
 HANDLERS = {
     "appointment_confirmation": appointment_confirmation,
     "appointment_reminder": appointment_reminder,
+    "job_started": job_started,
+    "job_completed": job_completed,
+    "appointment_cancelled": appointment_cancelled,
+    "payment_received": payment_received,
     "post_service_followup": post_service_followup,
     "review_request": review_request,
     "invoice_sent": invoice_sent,
