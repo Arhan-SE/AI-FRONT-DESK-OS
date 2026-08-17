@@ -23,6 +23,7 @@ from openai import AsyncOpenAI
 
 from genesis.db import pool
 from genesis.domain.communication.types import MessageType
+from genesis.domain.observability import usage
 from genesis.settings import settings
 
 log = logging.getLogger(__name__)
@@ -156,6 +157,7 @@ async def generate(message_type: MessageType, facts: dict[str, Any]) -> str | No
             max_tokens=160,
             temperature=0.6,
         )
+        await usage.record_completion(response, purpose="personalisation")
         text = (response.choices[0].message.content or "").strip()
     except Exception:
         log.warning("personalisation failed for %s; using template", message_type, exc_info=True)

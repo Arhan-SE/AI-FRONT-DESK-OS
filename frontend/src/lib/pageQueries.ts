@@ -182,6 +182,75 @@ export function useLeadScores() {
   });
 }
 
+/* --------------------------------------------------------------- ai usage */
+
+export interface UsageSummary {
+  total_calls: number;
+  voice_minutes: number;
+  total_tokens: number;
+  audio_tokens: number;
+  total_cost_usd: number;
+  voice_cost_usd: number;
+  text_cost_usd: number;
+  total_decisions: number;
+  blocked_decisions: number;
+  failed_decisions: number;
+}
+
+export function useUsageSummary() {
+  return useQuery({
+    queryKey: ["usage-summary"],
+    queryFn: async () =>
+      unwrap(
+        await from("v_usage_summary").single(),
+      ) as UsageSummary,
+    refetchInterval: 10_000,
+  });
+}
+
+export interface UsageEvent {
+  id: string;
+  source: string;
+  model: string;
+  purpose: string | null;
+  input_text_tokens: number;
+  input_audio_tokens: number;
+  output_text_tokens: number;
+  output_audio_tokens: number;
+  duration_seconds: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+export function useUsageEvents(limit = 40) {
+  return useQuery({
+    queryKey: ["usage-events", limit],
+    queryFn: async () =>
+      unwrap(
+        await from("usage_events").order("created_at", { ascending: false }).limit(limit),
+      ) as UsageEvent[],
+    refetchInterval: 10_000,
+  });
+}
+
+export interface DailyActivity {
+  day: string;
+  jobs: number;
+  completed: number;
+  collected: number;
+  decisions: number;
+  calls: number;
+}
+
+export function useDailyActivity() {
+  return useQuery({
+    queryKey: ["daily-activity"],
+    queryFn: async () =>
+      unwrap(await from("v_daily_activity").order("day")) as DailyActivity[],
+    refetchInterval: 30_000,
+  });
+}
+
 /* ------------------------------------------------------------- conversations */
 
 export interface ConversationRow {

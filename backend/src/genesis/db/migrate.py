@@ -54,7 +54,10 @@ async def apply_all() -> None:
                     )
                 print(f"  ✓ {version}")
             except Exception as exc:
-                print(f"  ✗ {version}\n    {exc}", file=sys.stderr)
+                # stdout, not stderr: when the two are piped together the
+                # buffering reorders them and the failure ends up printed
+                # above the header, which is how you miss it entirely.
+                print(f"  ✗ {version}\n    {exc}", flush=True)
                 raise
 
 

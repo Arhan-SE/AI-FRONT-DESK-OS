@@ -1,4 +1,9 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Page } from "@/components/AppShell";
+import { ChartFrame, TrendArea, TrendBars, MagnitudeBars } from "@/components/charts";
+import { useDailyActivity } from "@/lib/pageQueries";
+import { api } from "@/lib/api";
 import {
   MetricTile,
   Panel,
@@ -32,6 +37,10 @@ import {
 } from "@/lib/format";
 import { CheckCircle2, Radio } from "lucide-react";
 
+/** Pipeline counts come from the same endpoint the Jobs board uses. */
+const useJobsForPipeline = () =>
+  useQuery({ queryKey: ["jobs"], queryFn: api.listJobs, refetchInterval: 20_000 });
+
 const kindLabel: Record<string, string> = {
   overdue_payment: "Payment",
   hot_lead: "Lead",
@@ -46,8 +55,35 @@ export function OverviewPage() {
   const attention = useAttentionItems();
   const activity = useActivityFeed(25);
   const upcoming = useUpcomingAppointments();
+  const daily = useDailyActivity();
+  const jobs = useJobsForPipeline();
 
   const m = metrics.data;
+
+  const chart = useMemo(
+    () =>
+      (daily.data ?? []).map((d) => ({
+        label: new Date(d.day).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+        jobs: d.jobs,
+        collected: Number(d.collected),
+      })),
+    [daily.data],
+  );
+
+  // Stage counts straight from the jobs board, so the two never disagree.
+  const pipeline = useMemo(() => {
+    const rows = jobs.data ?? [];
+    const count = (stage: string) => rows.filter((j) => j.stage === stage).length;
+    return [
+      { label: "Scheduled", value: count("scheduled") },
+      { label: "Confirmed", value: count("confirmed") },
+      { label: "In progress", value: count("in_progress") },
+      { label: "Completed", value: count("completed") },
+      { label: "Invoiced", value: count("invoice_sent") },
+      { label: "Overdue", value: count("overdue"), tone: "critical" as const },
+      { label: "Paid", value: count("paid"), tone: "success" as const },
+    ];
+  }, [jobs.data]);
 
   return (
     <Page title="Overview">
@@ -100,6 +136,23 @@ export function OverviewPage() {
           />
         </div>
       )}
+
+      {/* --------------------------------------------------------- trends */}
+      <div className="mb-6 grid gap-3 lg:grid-cols-3">
+        <ChartFrame title="Jobs" hint="last 14 days" empty={!chart.some((d) => d.jobs > 0)}>
+          <TrendBars data={chart} dataKey="jobs" />
+        </ChartFrame>
+        <ChartFrame title="Collected" hint="last 14 days"
+          empty={!chart.some((d) => d.collected > 0)}>
+          <TrendArea data={chart} dataKey="collected" format={(v) => formatCurrency(v)} />
+        </ChartFrame>
+        <Panel>
+          <PanelHeader title="Pipeline" description="Where work is right now" />
+          <div className="py-3">
+            <MagnitudeBars rows={pipeline} />
+          </div>
+        </Panel>
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         {/* ------------------------------------------------------- attention */}

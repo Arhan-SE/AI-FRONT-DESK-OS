@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/primitives";
 import { Button, InlineError } from "@/components/ui/controls";
 import { useInvoices, type Invoice } from "@/lib/pageQueries";
+import { EditInvoiceDialog } from "./EditInvoiceDialog";
 import { api, ApiError } from "@/lib/api";
 import { formatCurrency, formatCurrencyCompact, formatDate, formatRelative } from "@/lib/format";
 import { Receipt, Play } from "lucide-react";
@@ -22,6 +23,7 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
 export function PaymentsPage() {
   const qc = useQueryClient();
   const invoices = useInvoices();
+  const [editing, setEditing] = useState<Invoice | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const runDue = useMutation({
@@ -89,14 +91,15 @@ export function PaymentsPage() {
             <thead>
               <tr>
                 <Th>Invoice</Th><Th>Customer</Th><Th>Service</Th>
-                <Th align="right">Amount</Th><Th>Due</Th><Th>Status</Th><Th align="right">Reminders</Th>
+                <Th align="right">Amount</Th><Th>Due</Th><Th>Status</Th>
+                <Th align="right">Reminders</Th><Th align="right" />
               </tr>
             </thead>
             <tbody>
               {all.map((inv) => {
                 const meta = STATUS[inv.status] ?? { label: inv.status, tone: "neutral" as Tone };
                 return (
-                  <Tr key={inv.id}>
+                  <Tr key={inv.id} onClick={() => setEditing(inv)}>
                     <Td className="font-mono text-[12px]">{inv.invoice_number}</Td>
                     <Td className="font-medium">{inv.customer_name}</Td>
                     <Td className="text-ink-muted">{inv.service_name ?? "—"}</Td>
@@ -131,6 +134,9 @@ export function PaymentsPage() {
                         "—"
                       )}
                     </Td>
+                    <Td align="right">
+                      <Button variant="ghost" onClick={() => setEditing(inv)}>Edit</Button>
+                    </Td>
                   </Tr>
                 );
               })}
@@ -138,6 +144,8 @@ export function PaymentsPage() {
           </Table>
         )}
       </Panel>
+
+      <EditInvoiceDialog invoice={editing} onClose={() => setEditing(null)} />
     </Page>
   );
 }

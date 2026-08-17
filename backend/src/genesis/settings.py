@@ -76,6 +76,21 @@ class Settings(BaseSettings):
     hot_threshold: int = 75
     warm_threshold: int = 50
 
+    # --- Model rates, USD per 1M tokens -----------------------------------
+    #
+    # These are configuration, not facts. Verify them against OpenAI's current
+    # pricing page before quoting a cost figure to anyone — they are here so
+    # the number the dashboard shows is arithmetic over a rate card you
+    # control, rather than something hardcoded and quietly wrong.
+    rate_mini_input: float = 0.15
+    rate_mini_output: float = 0.60
+    rate_realtime_text_input: float = 4.00
+    rate_realtime_text_output: float = 16.00
+    rate_realtime_audio_input: float = 32.00
+    rate_realtime_audio_output: float = 64.00
+    rate_realtime_cached_input: float = 0.40
+    rate_embedding: float = 0.02
+
     # --- Job pipeline timing ---------------------------------------------
     #
     # How long after each owner action the corresponding automation becomes

@@ -162,6 +162,20 @@ export const api = {
 
   queue: () => request<QueueItem[]>("/api/automation/queue"),
 
+  updateInvoice: (
+    id: string,
+    body: Partial<{ amount: number; due_on: string; status: string; invoice_number: string }>,
+  ) =>
+    request<{ id: string; updated: string[] }>(`/api/invoices/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteInvoice: (id: string) =>
+    request<{ deleted: string; cancelled_reminders: number }>(`/api/invoices/${id}`, {
+      method: "DELETE",
+    }),
+
   voiceSession: () =>
     request<{ url: string; token: string; room: string; identity: string }>(
       "/api/voice/session",

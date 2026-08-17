@@ -29,7 +29,7 @@ from livekit.plugins import openai as lk_openai
 
 from genesis.agent import tools as T
 from genesis.db import pool
-from genesis.domain.observability import decisions
+from genesis.domain.observability import decisions, usage
 from genesis.domain.scheduling import booking
 from genesis.settings import settings
 
@@ -80,6 +80,9 @@ async def _summarise(conversation_id: str) -> str | None:
             ],
             max_tokens=60,
             temperature=0.2,
+        )
+        await usage.record_completion(
+            response, purpose="summary", conversation_id=conversation_id
         )
         return (response.choices[0].message.content or "").strip() or None
     except Exception:
@@ -220,6 +223,31 @@ async def entrypoint(ctx: JobContext) -> None:
             api_key=settings.openai_api_key,
         )
     )
+
+    # Token and minute accounting. Realtime audio is the expensive part of this
+    # system by an order of magnitude, so it is measured rather than estimated.
+    @session.on("metrics_collected")
+    def _on_metrics(event) -> None:
+        m = getattr(event, "metrics", None)
+        if getattr(m, "type", None) != "realtime_model_metrics":
+            return
+
+        inp = getattr(m, "input_token_details", None)
+        out = getattr(m, "output_token_details", None)
+        ctx.create_task(
+            usage.record(
+                source="realtime",
+                model="gpt-realtime",
+                purpose="voice",
+                conversation_id=str(conversation_id),
+                input_text_tokens=getattr(inp, "text_tokens", 0) or 0,
+                input_audio_tokens=getattr(inp, "audio_tokens", 0) or 0,
+                input_cached_tokens=getattr(inp, "cached_tokens", 0) or 0,
+                output_text_tokens=getattr(out, "text_tokens", 0) or 0,
+                output_audio_tokens=getattr(out, "audio_tokens", 0) or 0,
+                duration_seconds=float(getattr(m, "duration", 0.0) or 0.0),
+            )
+        )
 
     # Persist both sides of the conversation as it happens, rather than trying
     # to reconstruct it at the end. A call that drops mid-sentence still leaves
