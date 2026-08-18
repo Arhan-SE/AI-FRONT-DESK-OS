@@ -20,6 +20,7 @@ from genesis.api.routes import (
     automation,
     campaigns,
     customers,
+    insights,
     invoices,
     jobs,
     leads,
@@ -77,6 +78,7 @@ app.include_router(voice.router)
 app.include_router(invoices.router)
 app.include_router(leads.router)
 app.include_router(ask.router)
+app.include_router(insights.router)
 
 
 @app.get("/health", tags=["system"])

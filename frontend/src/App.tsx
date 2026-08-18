@@ -2,6 +2,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
 import { OverviewPage } from "@/features/overview/OverviewPage";
+import { InsightsPage } from "@/features/insights/InsightsPage";
 import { JobsPage } from "@/features/jobs/JobsPage";
 import { PaymentsPage } from "@/features/payments/PaymentsPage";
 import { CustomersPage } from "@/features/customers/CustomersPage";
@@ -25,6 +26,7 @@ const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <OverviewPage /> },
+      { path: "insights", element: <InsightsPage /> },
       { path: "jobs", element: <JobsPage /> },
       { path: "leads", element: <LeadsPage /> },
       { path: "customers", element: <CustomersPage /> },

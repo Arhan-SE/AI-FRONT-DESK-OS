@@ -260,6 +260,9 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  /** Ranked observations about the business, with the figures behind them. */
+  insights: () => request<InsightsResponse>("/api/insights"),
+
   /** Ask a plain-English question about the business. */
   ask: (question: string) =>
     request<AskAnswer>("/api/ask", {
@@ -284,4 +287,24 @@ export type AskAnswer = {
   truncated: boolean;
   elapsed_ms: number;
   ok: boolean;
+};
+
+/** One ranked observation. Figures are computed in SQL; the model ranks them. */
+export type Insight = {
+  topic: string;
+  title: string;
+  finding: string;
+  why: string;
+  recommendation: string;
+  severity: "urgent" | "watch" | "opportunity";
+  metric: string | null;
+  metric_label: string | null;
+  action: { label: string; to: string } | null;
+};
+
+export type InsightsResponse = {
+  insights: Insight[];
+  facts: Record<string, unknown>;
+  generated_ms: number;
+  error: string | null;
 };

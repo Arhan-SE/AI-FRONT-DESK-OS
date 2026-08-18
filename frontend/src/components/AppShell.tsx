@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
   LayoutDashboard,
+  Lightbulb,
   Activity,
   Briefcase,
   Target,
@@ -74,6 +75,7 @@ const groups = [
     label: null,
     items: [
       { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
+      { to: "/insights", label: "Insights", icon: Lightbulb },
     ],
   },
   {
