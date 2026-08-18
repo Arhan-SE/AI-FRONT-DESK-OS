@@ -5,6 +5,7 @@ import {
 } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { useCustomers } from "@/lib/pageQueries";
+import logoLockup from "@/assets/logo-lockup.png";
 
 interface Health {
   database: { postgres: string; customers: number; appointments: number };
@@ -176,6 +177,14 @@ export function SettingsPage() {
 
       <Panel className="mt-6">
         <PanelHeader title="Demo tenant" />
+        {/* The one place the full lockup is shown at a size it was drawn for. */}
+        <div className="border-b border-line px-4 py-5">
+          <img
+            src={logoLockup}
+            alt="Apex Climate Solutions"
+            className="h-9 w-auto max-w-full object-contain object-left"
+          />
+        </div>
         <div className="grid gap-x-8 gap-y-2 px-4 py-4 sm:grid-cols-2">
           {[
             ["Business", "Apex Climate Care"],

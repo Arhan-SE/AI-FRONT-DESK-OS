@@ -260,8 +260,28 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  /** Ask a plain-English question about the business. */
+  ask: (question: string) =>
+    request<AskAnswer>("/api/ask", {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    }),
+
   runDue: () =>
     request<{ advanced: number; executed: number }>("/api/automation/run-due", {
       method: "POST",
     }),
+};
+
+/** One answer from the AI Administrative Manager, with the query behind it. */
+export type AskAnswer = {
+  question: string;
+  answer: string;
+  sql: string | null;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  row_count: number;
+  truncated: boolean;
+  elapsed_ms: number;
+  ok: boolean;
 };

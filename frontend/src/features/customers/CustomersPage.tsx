@@ -16,7 +16,6 @@ export function CustomersPage() {
   const [creating, setCreating] = useState(false);
   const all = customers.data ?? [];
 
-  const reachable = all.filter((c) => c.reachable).length;
   const outstanding = all.reduce((t, c) => t + Number(c.amount_outstanding), 0);
   const collected = all.reduce((t, c) => t + Number(c.total_paid), 0);
 
@@ -30,15 +29,8 @@ export function CustomersPage() {
         </Button>
       }
     >
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-3 gap-3">
         <MetricTile label="Customers" value={all.length} loading={customers.isPending} />
-        <MetricTile
-          label="Contactable"
-          value={`${reachable}/${all.length || 0}`}
-          hint={reachable === 0 ? "no Telegram linked yet" : "Telegram linked"}
-          tone={reachable === 0 && all.length > 0 ? "warning" : "neutral"}
-          loading={customers.isPending}
-        />
         <MetricTile label="Collected" value={formatCurrency(collected)} loading={customers.isPending} />
         <MetricTile
           label="Outstanding"
