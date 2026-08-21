@@ -281,6 +281,13 @@ export const api = {
       body: JSON.stringify({ question }),
     }),
 
+  /** Calendar subscription URLs. Served by the API — the tokens are credentials. */
+  calendarFeeds: () =>
+    request<{
+      business: { name: string; url: string };
+      technicians: { name: string; url: string }[];
+    }>("/api/calendar/feeds"),
+
   runDue: () =>
     request<{ advanced: number; executed: number }>("/api/automation/run-due", {
       method: "POST",

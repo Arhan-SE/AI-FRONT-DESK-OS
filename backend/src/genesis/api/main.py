@@ -18,6 +18,7 @@ from genesis.api.errors import register_error_handlers
 from genesis.api.routes import (
     ask,
     automation,
+    calendar,
     campaigns,
     customers,
     insights,
@@ -78,6 +79,7 @@ app.include_router(voice.router)
 app.include_router(invoices.router)
 app.include_router(leads.router)
 app.include_router(ask.router)
+app.include_router(calendar.router)
 app.include_router(insights.router)
 
 
