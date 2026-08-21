@@ -13,6 +13,7 @@ millisecond of tool latency is audible as hesitation in a conversation.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 
@@ -42,6 +43,18 @@ GREETING = (
     "Greet the caller: say this is Apex Climate Care and that you are the AI "
     "assistant, then ask how you can help. One sentence."
 )
+
+
+def _greeting_for(name: str | None) -> str:
+    """A recognised number is greeted by name; an unknown one is not."""
+    if not name:
+        return GREETING
+    return (
+        f"This is {name}, a returning customer — their number is on file, so you "
+        f"already know who they are. Greet them by their first name, say this is "
+        f"Apex Climate Care, then ask how you can help. One sentence. Do not ask "
+        f"them for their name and do not ask them to confirm it."
+    )
 
 
 async def _summarise(conversation_id: str) -> str | None:
@@ -198,16 +211,44 @@ async def entrypoint(ctx: JobContext) -> None:
     await pool.init_pool()
     await ctx.connect()
 
+    # Who is calling, if the number was recognised. The API resolved this from
+    # the customers table and signed it into the token, so it is not something
+    # the browser could have invented.
+    caller: dict | None = None
+    try:
+        participant = await ctx.wait_for_participant()
+        if participant.metadata:
+            caller = json.loads(participant.metadata)
+    except Exception:
+        # An unreadable identity is an unknown caller, never a failed call.
+        log.warning("could not read caller identity; treating as unknown", exc_info=True)
+        caller = None
+
     conversation_id = await pool.fetchval(
         """
-        insert into conversations (business_id, channel, status, livekit_room)
-        values ($1, 'voice', 'active', $2)
+        insert into conversations
+          (business_id, customer_id, channel, status, livekit_room)
+        values ($1, $2, 'voice', 'active', $3)
         returning id
         """,
         settings.demo_business_id,
+        caller["customer_id"] if caller else None,
         ctx.room.name,
     )
     state = T.SessionState(conversation_id=str(conversation_id))
+
+    if caller:
+        state.customer_id = caller["customer_id"]
+        state.customer_name = caller["full_name"]
+        await decisions.record(
+            business_id=settings.demo_business_id,
+            conversation_id=str(conversation_id),
+            customer_id=state.customer_id,
+            event_type="customer_identified",
+            summary=f"{caller['full_name']} recognised from their number",
+            detail={"source": "caller_id", "phone": caller.get("phone") or None},
+            confidence=1.0,
+        )
 
     # Fire-and-forget writes from synchronous event handlers. asyncio holds
     # only a weak reference to a running task, so without this set a
@@ -338,7 +379,7 @@ async def entrypoint(ctx: JobContext) -> None:
     ctx.add_shutdown_callback(_cleanup)
 
     await session.start(agent=Receptionist(state), room=ctx.room)
-    await session.generate_reply(instructions=GREETING)
+    await session.generate_reply(instructions=_greeting_for(state.customer_name))
 
 
 if __name__ == "__main__":

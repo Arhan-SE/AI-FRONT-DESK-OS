@@ -227,11 +227,22 @@ export const api = {
       method: "DELETE",
     }),
 
-  voiceSession: () =>
-    request<{ url: string; token: string; room: string; identity: string }>(
-      "/api/voice/session",
-      { method: "POST" },
-    ),
+  /**
+   * Start a call. `customerId` stands in for the number the call came from —
+   * pass one and the agent is told who is calling before anyone speaks; pass
+   * null and it treats the caller as unknown and asks.
+   */
+  voiceSession: (customerId: string | null = null) =>
+    request<{
+      url: string;
+      token: string;
+      room: string;
+      identity: string;
+      caller_name: string | null;
+    }>("/api/voice/session", {
+      method: "POST",
+      body: JSON.stringify({ customer_id: customerId }),
+    }),
 
   updateCustomer: (id: string, body: Partial<CustomerPatch>) =>
     request<{ id: string; full_name: string; reachable: boolean }>(
