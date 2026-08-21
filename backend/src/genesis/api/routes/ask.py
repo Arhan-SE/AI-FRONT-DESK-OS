@@ -136,8 +136,27 @@ Hard rules:
 - Add `limit 50` unless the question implies a single aggregate.
 - Money is `numeric` rupees. Dates are `date`; timestamps are `timestamptz`.
 - Use `current_date` / `now()` for anything relative to today.
-- If the question cannot be answered from these views, return exactly:
+- The conversation so far is given to you. Resolve pronouns against it: after
+  "who owes me money", "chase him" refers to the person you just named.
+- If the message is conversation rather than a question about the data — a
+  greeting, thanks, "what can you do", a question about how you work — return
+  exactly: CHAT
+- If it is a data question these views genuinely cannot answer, return exactly:
   IMPOSSIBLE"""
+
+
+CHAT_SYSTEM = """You are the operations manager for Apex Climate Care, a home services business in Bengaluru. You are talking to the owner.
+
+You can answer questions about their jobs, customers, invoices and payments,
+appointments and technicians, campaigns and outreach, reviews, and what the AI
+has cost. You read their live database to do it.
+
+- Two or three sentences. Warm, direct, Indian English. No corporate filler.
+- If they ask what you can do, give two or three concrete example questions
+  they could ask, drawn from the list above.
+- Never invent figures. If answering needs data, invite them to ask for it
+  directly rather than guessing.
+- No markdown, no bullet lists."""
 
 
 ANSWER_SYSTEM = """You are the operations manager of an Indian home-services \
@@ -263,8 +282,18 @@ async def _repair(client, question: str, sql: str, error: str) -> str | None:
 MAX_ROWS = 50
 
 
+class Turn(BaseModel):
+    """One prior exchange. Sent by the browser so follow-ups resolve."""
+
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(max_length=2000)
+
+
 class Question(BaseModel):
-    question: str = Field(min_length=3, max_length=300)
+    question: str = Field(min_length=1, max_length=300)
+    # Bounded deliberately: enough for "chase him" to resolve, not enough for
+    # the prompt to grow without limit over a long conversation.
+    history: list[Turn] = Field(default_factory=list, max_length=8)
 
 
 class Answer(BaseModel):
@@ -277,6 +306,7 @@ class Answer(BaseModel):
     truncated: bool = False
     elapsed_ms: int = 0
     ok: bool = True
+    kind: str = "data"  # "data" when a query ran, "chat" for conversation
 
 
 @router.post("", response_model=Answer)
