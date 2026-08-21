@@ -171,7 +171,11 @@ async def identify_customer(state: SessionState, name: str, phone: str = "") -> 
                 )
             elif len(matched) > 1:
                 # Genuinely two different people, not a spelling variant.
-                await _log(state, "identity_ambiguous", f"'{name}' matched {len(matched)} customers")
+                await _log(
+                    state,
+                    "identity_ambiguous",
+                    f"'{name}' matched {len(matched)} customers",
+                )
                 return (
                     "That name matches more than one customer. Ask them for their "
                     "surname."

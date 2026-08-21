@@ -1,12 +1,12 @@
-"""Reset the demo tenant to a clean, honest starting state.
+"""Reset the tenant to a clean starting state.
 
 Configuration is kept — the business, its services, technicians, opening hours
-and message templates. Activity is not: no invented customers, appointments,
-invoices or reviews.
+and message templates. Activity is not: no customers, appointments, invoices
+or reviews.
 
-The dashboard therefore starts near-empty and fills up as the system is
-demonstrated. A judge watching counters move while they press buttons is more
-convincing than a dashboard that was already full when they arrived.
+You start with an empty book and fill it yourself, through the interface or by
+talking to the voice agent. Nothing here invents people or history, so every
+number on the dashboard is one you produced.
 
 Run with:  uv run python -m genesis.db.seed
 """
@@ -22,17 +22,6 @@ from genesis.settings import settings
 log = logging.getLogger(__name__)
 
 BUSINESS_ID = settings.demo_business_id
-
-# Real people who will use the system. Phone numbers are placeholders for voice
-# identification and can be edited in the Customers page; telegram_chat_id is
-# populated when each person messages the bot.
-CUSTOMERS: list[tuple[str, str]] = [
-    ("Muhammad Kareem", "+91 90000 00001"),
-    ("Imran Sheik", "+91 90000 00002"),
-    ("Mohammed Rafi", "+91 90000 00003"),
-    ("Mohammed Sadiq", "+91 90000 00004"),
-    ("Karthik R", "+91 90000 00005"),
-]
 
 # Order matters: children before parents. Several tables use ON DELETE SET NULL
 # rather than CASCADE, so relying on the customer delete alone would leave
@@ -68,17 +57,6 @@ async def reset() -> dict[str, int]:
                 f"delete from {table} where business_id = $1", BUSINESS_ID  # noqa: S608
             )
 
-        for name, phone in CUSTOMERS:
-            await conn.execute(
-                """
-                insert into customers (business_id, full_name, phone, status)
-                values ($1, $2, $3, 'active')
-                """,
-                BUSINESS_ID,
-                name,
-                phone,
-            )
-
         counts = {
             "customers": await conn.fetchval(
                 "select count(*) from customers where business_id = $1", BUSINESS_ID
@@ -105,11 +83,9 @@ async def main() -> None:
     print("Reset complete — configuration kept, activity cleared.\n")
     for key, value in counts.items():
         print(f"  {key:14} {value}")
-    print("\nCustomers:")
-    for name, phone in CUSTOMERS:
-        print(f"  · {name:18} {phone}")
-    print("\nNo Telegram chat ids yet — the Guard will block outreach until each")
-    print("person messages the bot. That is correct behaviour, not a failure.")
+    print("\nAdd your first customer in the Customers page, or start a voice call")
+    print("and let the agent create one. Outreach stays blocked by the Guard until")
+    print("a customer messages the Telegram bot — that is correct, not a failure.")
     await pool.close_pool()
 
 

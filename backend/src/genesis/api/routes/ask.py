@@ -145,7 +145,8 @@ Hard rules:
   IMPOSSIBLE"""
 
 
-CHAT_SYSTEM = """You are the operations manager for Apex Climate Care, a home services business in Bengaluru. You are talking to the owner.
+CHAT_SYSTEM = """You are the operations manager for Apex Climate Care, a home
+services business in Bengaluru. You are talking to the owner.
 
 You can answer questions about their jobs, customers, invoices and payments,
 appointments and technicians, campaigns and outreach, reviews, and what the AI

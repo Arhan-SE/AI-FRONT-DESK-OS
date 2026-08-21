@@ -116,7 +116,10 @@ async def delete_customer(customer_id: str) -> dict:
             business_id=settings.demo_business_id,
             event_type="customer_deleted",
             status="pending",
-            summary=f"{row['full_name']} deleted — {row['jobs']} job(s), {row['invoices']} invoice(s)",
+            summary=(
+                f"{row['full_name']} deleted — {row['jobs']} job(s), "
+                f"{row['invoices']} invoice(s)"
+            ),
             detail={"jobs": row["jobs"], "invoices": row["invoices"]},
             conn=conn,
         )

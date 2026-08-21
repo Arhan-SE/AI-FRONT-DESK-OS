@@ -9,8 +9,6 @@ Run with:  uv run python -m genesis.db.migrate
 from __future__ import annotations
 
 import asyncio
-import sys
-from pathlib import Path
 
 from genesis.db import pool
 from genesis.settings import REPO_ROOT
