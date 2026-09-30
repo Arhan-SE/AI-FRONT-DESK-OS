@@ -1,7 +1,7 @@
 # Genesis OS — runbook
 
-AI operating system for home-service businesses. Five processes, all on this
-machine. Nothing listens on the public internet.
+AI operating system for home-service businesses. Four processes, all on this
+machine, plus LiveKit Cloud for voice. Nothing listens on the public internet.
 
 ---
 
@@ -13,28 +13,22 @@ Check these once. If they were fine yesterday they are fine today.
 node -v        # 26.x
 python3 -V     # 3.12+
 uv --version
-livekit-server --version
 ```
 
 The only file you need is `.env` at the repository root. It is gitignored and
-already filled in.
+already filled in — `LIVEKIT_URL` in there points at a `wss://*.livekit.cloud`
+project, so there is no LiveKit server to install or run locally. (If it is
+ever set back to `ws://localhost:7880` instead, see **Self-hosted LiveKit**
+below — `livekit-server` is only needed for that fallback.)
 
 ---
 
-## Starting up — five terminals
+## Starting up — four terminals
 
-Run each in its own terminal, **in this order**. Order matters only for the
-agent, which needs LiveKit already listening.
+Run each in its own terminal. Order doesn't matter — the agent connects
+outbound to LiveKit Cloud, so nothing here needs to wait on anything else.
 
-### Terminal 1 — LiveKit
-
-```bash
-make livekit
-```
-
-Wait for: `starting LiveKit server ... "portHttp": 7880`
-
-### Terminal 2 — API
+### Terminal 1 — API
 
 ```bash
 make api
@@ -45,18 +39,16 @@ Wait for: `ready — postgres 17.6, 5 customers, N appointments`
 A warning about `TELEGRAM_BOT_TOKEN not set` is expected until a token is
 configured. It is not an error.
 
-### Terminal 3 — Voice agent
+### Terminal 2 — Voice agent
 
 ```bash
 make agent
 ```
 
-Wait for: `registered worker`
+Wait for: `registered worker` — the log line names the region LiveKit Cloud
+assigned it (e.g. `"region": "India South"`).
 
-If this says `ws_url is required` the LiveKit server is not up yet — start
-terminal 1 first.
-
-### Terminal 4 — Automation worker
+### Terminal 3 — Automation worker
 
 ```bash
 make automation
@@ -66,7 +58,7 @@ Wait for: `worker started — postgres 17.6`
 
 This drains the job queue every 10 seconds and polls Telegram for replies.
 
-### Terminal 5 — Dashboard
+### Terminal 4 — Dashboard
 
 ```bash
 make web
@@ -83,8 +75,10 @@ make dev-check
 ```
 
 Checks every process, the database, both credentials, and — the one that is
-easy to miss — whether LiveKit is still advertising an IP address this machine
-actually has. It exits non-zero if anything is wrong.
+easy to miss when self-hosting — whether LiveKit is still advertising an IP
+address this machine actually has. Against LiveKit Cloud it instead makes a
+real authenticated API call to the project, which catches a wrong URL or a
+bad key/secret pair. Exits non-zero if anything is wrong.
 
 
 Open **http://localhost:5173**.
@@ -94,7 +88,7 @@ The bottom of the sidebar is the single check that matters:
 | Indicator | Meaning |
 |---|---|
 | ● All systems running | API reachable, everything up |
-| ● API unreachable | Terminal 2 died — restart it |
+| ● API unreachable | Terminal 1 died — restart it |
 | ● Telegram not configured | Expected until a bot token is set |
 
 Then confirm the API directly:
@@ -110,12 +104,14 @@ curl -s localhost:8000/health | python3 -m json.tool
 `Ctrl-C` in each terminal, or from anywhere:
 
 ```bash
-pkill -f livekit-server
 pkill -f "uvicorn genesis.api"
 pkill -f genesis.agent.worker
 pkill -f genesis.automation.worker
 pkill -f vite
 ```
+
+Add `pkill -f livekit-server` too if you're running the self-hosted fallback
+below.
 
 ---
 
@@ -123,13 +119,28 @@ pkill -f vite
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Sidebar says API unreachable | uvicorn died | Restart terminal 2 |
-| Start call spins, never connects | LiveKit down | Restart terminal 1, then terminal 3 |
-| Call connects then drops after a few seconds | Machine's IP changed since LiveKit started — it is advertising the old one | Restart terminal 1. `make dev-check` detects this |
-| Agent joins but never speaks | OpenAI key or network | Check terminal 3 output |
+| Sidebar says API unreachable | uvicorn died | Restart terminal 1 |
+| Start call spins, never connects | Agent not registered with LiveKit Cloud, or a network/firewall issue | Check terminal 2 output; `make dev-check` confirms the cloud project is reachable |
+| Agent joins but never speaks | OpenAI key or network | Check terminal 2 output |
 | Microphone denied | Browser permission | Allow in site settings, reload |
-| Reminders never send | No Telegram token | Expected — the Guard blocks, correctly |
+| Reminders never send | No Telegram token, or the customer has no linked chat id | `make dev-check` shows the token; each customer needs `telegram_chat_id` set once they've messaged the bot |
 | Jobs board empty after restart | Nothing is lost; data is in Supabase | Reload the page |
+
+### Self-hosted LiveKit
+
+Only relevant if `LIVEKIT_URL` in `.env` is `ws://localhost:7880` instead of a
+`wss://*.livekit.cloud` project — the default setup does not need this.
+
+```bash
+make livekit
+```
+
+Wait for: `starting LiveKit server ... "portHttp": 7880`, then start the other
+four terminals as above.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Call connects then drops after a few seconds | Machine's IP changed since LiveKit started — it is advertising the old one | Restart `make livekit`. `make dev-check` detects this |
 
 Restarting a process is always safe. The database is the source of truth —
 there is no in-memory state to lose, and a worker killed mid-job leaves the job

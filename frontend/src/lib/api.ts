@@ -70,6 +70,7 @@ export interface Job {
   technician_name: string;
   starts_at: string;
   customer_reachable: boolean;
+  invoice_id: string | null;
   invoice_number: string | null;
   invoice_amount: number | null;
   due_on: string | null;
@@ -109,6 +110,18 @@ export interface CustomerPatch {
 }
 
 export type CampaignType = "reactivation" | "seasonal" | "review_request";
+
+export type CallPurpose = "review" | "payment" | "reactivation";
+
+export interface CallSession {
+  url: string;
+  token: string;
+  room: string;
+  identity: string;
+  customer_name: string;
+  purpose: CallPurpose;
+  facts: Record<string, unknown>;
+}
 
 export interface CampaignCandidate {
   customer_id: string;
@@ -227,22 +240,11 @@ export const api = {
       method: "DELETE",
     }),
 
-  /**
-   * Start a call. `customerId` stands in for the number the call came from —
-   * pass one and the agent is told who is calling before anyone speaks; pass
-   * null and it treats the caller as unknown and asks.
-   */
-  voiceSession: (customerId: string | null = null) =>
-    request<{
-      url: string;
-      token: string;
-      room: string;
-      identity: string;
-      caller_name: string | null;
-    }>("/api/voice/session", {
-      method: "POST",
-      body: JSON.stringify({ customer_id: customerId }),
-    }),
+  voiceSession: () =>
+    request<{ url: string; token: string; room: string; identity: string }>(
+      "/api/voice/session",
+      { method: "POST" },
+    ),
 
   updateCustomer: (id: string, body: Partial<CustomerPatch>) =>
     request<{ id: string; full_name: string; reachable: boolean }>(
@@ -274,23 +276,26 @@ export const api = {
   /** Ranked observations about the business, with the figures behind them. */
   insights: () => request<InsightsResponse>("/api/insights"),
 
-  /** Ask a plain-English question about the business. */
-  ask: (question: string) =>
+  /** Ask a plain-English question about the business. History resolves
+   *  pronouns across turns — "chase him" after "who owes me money". */
+  ask: (question: string, history: { role: "user" | "assistant"; content: string }[] = []) =>
     request<AskAnswer>("/api/ask", {
       method: "POST",
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history }),
     }),
-
-  /** Calendar subscription URLs. Served by the API — the tokens are credentials. */
-  calendarFeeds: () =>
-    request<{
-      business: { name: string; url: string };
-      technicians: { name: string; url: string }[];
-    }>("/api/calendar/feeds"),
 
   runDue: () =>
     request<{ advanced: number; executed: number }>("/api/automation/run-due", {
       method: "POST",
+    }),
+
+  /** Resolve a job, invoice, or customer id into a joinable LiveKit session
+   *  for an outbound call — no telephony, no Telegram; the browser joins the
+   *  room directly and the agent is briefed on why it's calling. */
+  joinCall: (purpose: CallPurpose, ref: string) =>
+    request<CallSession>("/api/calls/join", {
+      method: "POST",
+      body: JSON.stringify({ purpose, ref }),
     }),
 };
 

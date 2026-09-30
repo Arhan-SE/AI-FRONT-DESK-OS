@@ -14,6 +14,8 @@ import socket
 import subprocess
 import sys
 
+from livekit import api as lk_api
+
 from genesis.db import pool
 from genesis.settings import settings
 
@@ -75,7 +77,28 @@ def _machine_ips() -> set[str]:
     return ips
 
 
-def check_livekit() -> bool:
+async def _check_livekit_cloud() -> bool:
+    """A real round trip, not just a socket probe.
+
+    LiveKit Cloud runs infrastructure we don't control and has no local
+    address to go stale — the failure mode here is a wrong URL or a bad key/
+    secret pair, which a TCP connect can't catch but an authenticated API
+    call can.
+    """
+    try:
+        async with lk_api.LiveKitAPI(
+            settings.livekit_url, settings.livekit_api_key, settings.livekit_api_secret
+        ) as lkapi:
+            await lkapi.room.list_rooms(lk_api.ListRoomsRequest())
+    except Exception as exc:
+        _line(FAIL, "LiveKit", f"cloud auth failed — {str(exc)[:60]}")
+        return False
+
+    _line(OK, "LiveKit", f"cloud reachable — {settings.livekit_url}")
+    return True
+
+
+def _check_livekit_self_hosted() -> bool:
     """The media socket's address must still belong to this machine.
 
     LiveKit picks an address at startup and advertises it to browsers. If the
@@ -105,6 +128,15 @@ def check_livekit() -> bool:
     return False
 
 
+async def check_livekit() -> bool:
+    """Dev mode always speaks plain `ws://`; LiveKit Cloud always speaks `wss://`
+    — that scheme is what tells the two checks below apart.
+    """
+    if settings.livekit_url.startswith("wss://"):
+        return await _check_livekit_cloud()
+    return _check_livekit_self_hosted()
+
+
 async def main() -> None:
     ok = True
 
@@ -115,7 +147,7 @@ async def main() -> None:
             _line(FAIL, label, f"nothing on :{port}")
             ok = False
 
-    ok &= check_livekit()
+    ok &= await check_livekit()
 
     try:
         health = await pool.healthcheck()

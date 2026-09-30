@@ -13,10 +13,10 @@ import {
   Receipt,
   Settings,
   PhoneCall,
+  Sparkles,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
-import logoMark from "@/assets/logo-mark.png";
 import { api } from "@/lib/api";
 import { AskBar } from "@/components/AskBar";
 
@@ -100,6 +100,7 @@ const groups = [
     label: null,
     items: [
       { to: "/demo", label: "Live Call", icon: PhoneCall },
+      { to: "/manager", label: "AI Manager", icon: Sparkles },
       { to: "/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -149,20 +150,10 @@ export function AppShell() {
   return (
     <div className="flex h-dvh overflow-hidden bg-canvas">
       <aside className="flex w-[232px] shrink-0 flex-col border-r border-line bg-surface">
-        {/* Business identity. The mark alone, not the full lockup — at 232px the
-            horizontal wordmark would either be unreadable or eat the header. The
-            name is set in type beside it, which stays crisp at any zoom. */}
-        <div className="flex h-14 items-center gap-2.5 border-b border-line px-4">
-          <img
-            src={logoMark}
-            alt=""
-            className="size-7 shrink-0 object-contain"
-          />
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold leading-tight">
-              Apex Climate Care
-            </div>
-            <div className="t-meta leading-tight">Bengaluru</div>
+        {/* Product identity. Type only — no mark. */}
+        <div className="flex h-14 items-center border-b border-line px-4">
+          <div className="truncate text-[16px] font-semibold leading-tight">
+            AI Business OS
           </div>
         </div>
 

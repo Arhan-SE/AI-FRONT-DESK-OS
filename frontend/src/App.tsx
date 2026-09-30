@@ -11,8 +11,10 @@ import { CampaignsPage } from "@/features/campaigns/CampaignsPage";
 import { ReviewsPage } from "@/features/reviews/ReviewsPage";
 import { LeadsPage } from "@/features/leads/LeadsPage";
 import { VoiceCallPage } from "@/features/voice/VoiceCallPage";
+import { JoinCallPage } from "@/features/voice/JoinCallPage";
 import { ConversationsPage } from "@/features/conversations/ConversationsPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
+import { AiManagerPage } from "@/features/manager/AiManagerPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,9 +38,13 @@ const router = createBrowserRouter([
       { path: "reviews", element: <ReviewsPage /> },
       { path: "payments", element: <PaymentsPage /> },
       { path: "demo", element: <VoiceCallPage /> },
+      { path: "manager", element: <AiManagerPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },
+  // Outside AppShell on purpose — a customer opening a Telegram call-invite
+  // link should see the call, not the internal dashboard nav around it.
+  { path: "/call/:purpose/:ref", element: <JoinCallPage /> },
 ]);
 
 export default function App() {

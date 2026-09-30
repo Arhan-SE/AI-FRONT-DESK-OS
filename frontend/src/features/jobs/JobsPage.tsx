@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Page } from "@/components/AppShell";
 import {
@@ -19,7 +20,7 @@ import { NewJobDialog } from "./NewJobDialog";
 import { CorrectStageDialog } from "./CorrectStageDialog";
 import { api, ApiError, type Job, type Action, type Stage } from "@/lib/api";
 import { formatDateTime, formatCurrency } from "@/lib/format";
-import { Plus, Play, Briefcase, MessageSquareOff, Undo2 } from "lucide-react";
+import { Plus, Play, Briefcase, MessageSquareOff, Undo2, PhoneCall } from "lucide-react";
 
 /**
  * The pipeline, in order. This array is the page: the strip across the top,
@@ -54,6 +55,7 @@ const CONSEQUENCE: Partial<Record<Action, string>> = {
 
 export function JobsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [correcting, setCorrecting] = useState<Job | null>(null);
   const [filter, setFilter] = useState<Stage | null>(null);
@@ -212,6 +214,8 @@ export function JobsPage() {
                   busy={busyId === job.id}
                   onMove={(action) => move.mutate({ id: job.id, action })}
                   onCorrect={() => setCorrecting(job)}
+                  onPaymentCall={() => navigate(`/call/payment/${job.invoice_id}`)}
+                  onReviewCall={() => navigate(`/call/review/${job.id}`)}
                 />
               ))}
             </tbody>
@@ -230,11 +234,15 @@ function JobRow({
   busy,
   onMove,
   onCorrect,
+  onPaymentCall,
+  onReviewCall,
 }: {
   job: Job;
   busy: boolean;
   onMove: (action: Action) => void;
   onCorrect: () => void;
+  onPaymentCall: () => void;
+  onReviewCall: () => void;
 }) {
   const meta = STAGE_META.get(job.stage);
   const terminal = job.stage === "cancelled" || job.stage === "no_show";
@@ -282,6 +290,28 @@ function JobRow({
           >
             <Undo2 className="size-3.5" strokeWidth={2} />
           </Button>
+          {(job.stage === "invoice_sent" || job.stage === "overdue") && job.invoice_id ? (
+            <Button
+              variant="ghost"
+              onClick={onPaymentCall}
+              disabled={busy}
+              title="Start a call with the AI voice agent about this invoice"
+            >
+              <PhoneCall className="size-3.5" strokeWidth={2} />
+              Initiate call reminder
+            </Button>
+          ) : null}
+          {job.stage === "paid" ? (
+            <Button
+              variant="ghost"
+              onClick={onReviewCall}
+              disabled={busy}
+              title="Start a call with the AI voice agent asking for a review"
+            >
+              <PhoneCall className="size-3.5" strokeWidth={2} />
+              Send review reminder
+            </Button>
+          ) : null}
           {CANCELLABLE.includes(job.stage) ? (
             <Button variant="ghost" onClick={() => onMove("cancel")} disabled={busy}>
               Cancel

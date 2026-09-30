@@ -42,6 +42,7 @@ class JobResponse(BaseModel):
     technician_name: str
     starts_at: datetime
     customer_reachable: bool
+    invoice_id: str | None = None
     invoice_number: str | None = None
     invoice_amount: float | None = None
     due_on: str | None = None
@@ -60,7 +61,8 @@ async def list_jobs(limit: int = 100) -> list[JobResponse]:
     rows = await pool.fetch(
         """
         select id, stage, customer_name, service_name, technician_name,
-               starts_at, customer_reachable, invoice_number, invoice_amount, due_on
+               starts_at, customer_reachable, invoice_id, invoice_number,
+               invoice_amount, due_on
           from v_jobs
          where business_id = $1
          order by starts_at desc
@@ -78,6 +80,7 @@ async def list_jobs(limit: int = 100) -> list[JobResponse]:
             technician_name=r["technician_name"],
             starts_at=r["starts_at"],
             customer_reachable=r["customer_reachable"],
+            invoice_id=str(r["invoice_id"]) if r["invoice_id"] else None,
             invoice_number=r["invoice_number"],
             invoice_amount=float(r["invoice_amount"]) if r["invoice_amount"] else None,
             due_on=str(r["due_on"]) if r["due_on"] else None,

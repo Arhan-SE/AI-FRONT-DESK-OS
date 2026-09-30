@@ -44,16 +44,67 @@ GREETING = (
     "assistant, then ask how you can help. One sentence."
 )
 
+# --------------------------------------------------------------------------
+# Outbound calls — review requests, payment reminders, reactivation
+#
+# There is no telephony here and nothing goes out over Telegram: the "call" is
+# this same voice agent, joined from the dashboard the moment the owner clicks
+# a button on a job, invoice, or lead. The room already carries its purpose
+# and facts as metadata, set by /api/calls/join before anyone connects — but
+# unlike a real phone line there is no caller ID on this end, so the agent
+# still opens by confirming who picked up before saying anything else.
+# --------------------------------------------------------------------------
 
-def _greeting_for(name: str | None) -> str:
-    """A recognised number is greeted by name; an unknown one is not."""
-    if not name:
-        return GREETING
+_OUTBOUND_BRIEF: dict[str, str] = {
+    "review": (
+        "You are calling {customer_name} on behalf of Apex Climate Care about "
+        "the {service} completed on {job_date}. Greet them by first name, say "
+        "why you're calling, ask how the service went, and ask if they would "
+        "give a quick rating from 1 to 5. Thank them for whatever they say. "
+        "Keep it short and warm — this is one question, not an interrogation."
+    ),
+    "payment": (
+        "You are calling {customer_name} on behalf of Apex Climate Care about "
+        "invoice {invoice_number} for Rs {amount}. Greet them by first name, "
+        "explain you're calling about the outstanding invoice, and politely "
+        "ask when they can settle it. Do not be aggressive even if it is "
+        "overdue — this is a reminder, not a demand. If they say they already "
+        "paid, thank them and say the team will check."
+    ),
+    "reactivation": (
+        "You are calling {customer_name} on behalf of Apex Climate Care. It "
+        "has been a while since their last service. Greet them by first name, "
+        "mention it has been some time, and ask if they would like to book a "
+        "service. If they are interested, tell them someone will follow up to "
+        "find a slot — you cannot book directly on this call. Keep it brief "
+        "and not pushy; if they are not interested, thank them and end warmly."
+    ),
+}
+
+OUTBOUND_GREETING = (
+    "Open the call now, following your instructions — start with the identity check."
+)
+
+
+def _outbound_instructions(context: dict) -> str:
+    name = context.get("customer_name", "the customer")
+    brief = _OUTBOUND_BRIEF[context["purpose"]].format(
+        customer_name=name,
+        service=context.get("service", "the recent job"),
+        job_date=context.get("job_date", "recently"),
+        invoice_number=context.get("invoice_number", ""),
+        amount=context.get("amount", ""),
+    )
+    identity_check = (
+        f'Start the call by asking "Is this {name}?" — nothing else first, no '
+        f"greeting before it. Wait for them to confirm. If they say yes (or "
+        f"anything that is not a clear no), continue into the reason for your "
+        f"call below. If they say no or seem to be the wrong person, apologise "
+        f"for the mix-up and end the call without saying why you called."
+    )
     return (
-        f"This is {name}, a returning customer — their number is on file, so you "
-        f"already know who they are. Greet them by their first name, say this is "
-        f"Apex Climate Care, then ask how you can help. One sentence. Do not ask "
-        f"them for their name and do not ask them to confirm it."
+        f"{identity_check}\n\n{brief}\n\nSpeak naturally, one or two sentences "
+        "per turn. Never invent facts beyond what you were just told."
     )
 
 
@@ -188,67 +239,77 @@ class Receptionist(Agent):
         Use when the caller says goodbye, says they are done, or the
         conversation has clearly finished.
         """
-        # Wait for the goodbye to finish playing. Tearing the room down while
-        # audio is still in flight cuts the agent off mid-word, which sounds
-        # like a crash rather than a hang-up.
-        await ctx.wait_for_playout()
+        return await _end_call(ctx, self.state)
 
-        await decisions.record(
-            business_id=settings.demo_business_id,
-            conversation_id=self.state.conversation_id,
-            customer_id=self.state.customer_id,
-            event_type="call_ended_by_agent",
-            summary="Agent ended the call",
-            tool_name="end_call",
-        )
 
-        job = get_job_context()
-        await job.delete_room()
-        return "Call ended."
+async def _end_call(ctx: RunContext, state: T.SessionState) -> str:
+    # Wait for the goodbye to finish playing. Tearing the room down while
+    # audio is still in flight cuts the agent off mid-word, which sounds
+    # like a crash rather than a hang-up.
+    await ctx.wait_for_playout()
+
+    await decisions.record(
+        business_id=settings.demo_business_id,
+        conversation_id=state.conversation_id,
+        customer_id=state.customer_id,
+        event_type="call_ended_by_agent",
+        summary="Agent ended the call",
+        tool_name="end_call",
+    )
+
+    job = get_job_context()
+    await job.delete_room()
+    return "Call ended."
+
+
+class OutboundAgent(Agent):
+    """A single-purpose call — review request, payment reminder, or
+    reactivation. No booking tools: the job is one short conversation, not
+    the full receptionist flow."""
+
+    def __init__(self, state: T.SessionState, instructions: str) -> None:
+        super().__init__(instructions=instructions)
+        self.state = state
+
+    @function_tool
+    async def end_call(self, ctx: RunContext) -> str:
+        """Hang up. Say goodbye to the caller BEFORE calling this.
+
+        Use when the caller says goodbye, says they are done, or the
+        conversation has clearly finished.
+        """
+        return await _end_call(ctx, self.state)
 
 
 async def entrypoint(ctx: JobContext) -> None:
     await pool.init_pool()
     await ctx.connect()
 
-    # Who is calling, if the number was recognised. The API resolved this from
-    # the customers table and signed it into the token, so it is not something
-    # the browser could have invented.
-    caller: dict | None = None
-    try:
-        participant = await ctx.wait_for_participant()
-        if participant.metadata:
-            caller = json.loads(participant.metadata)
-    except Exception:
-        # An unreadable identity is an unknown caller, never a failed call.
-        log.warning("could not read caller identity; treating as unknown", exc_info=True)
-        caller = None
+    # Outbound calls (review, payment reminder, reactivation) carry their
+    # purpose and facts in room metadata, set by /api/calls/join before the
+    # customer's browser ever connects. Its absence means an ordinary inbound
+    # call, which is the overwhelming majority of rooms this worker ever sees.
+    outbound: dict | None = None
+    if ctx.room.metadata:
+        try:
+            outbound = json.loads(ctx.room.metadata)
+        except (json.JSONDecodeError, TypeError):
+            log.warning("unreadable room metadata; treating as inbound", exc_info=True)
 
     conversation_id = await pool.fetchval(
         """
-        insert into conversations
-          (business_id, customer_id, channel, status, livekit_room)
+        insert into conversations (business_id, customer_id, channel, status, livekit_room)
         values ($1, $2, 'voice', 'active', $3)
         returning id
         """,
         settings.demo_business_id,
-        caller["customer_id"] if caller else None,
+        outbound["customer_id"] if outbound else None,
         ctx.room.name,
     )
     state = T.SessionState(conversation_id=str(conversation_id))
-
-    if caller:
-        state.customer_id = caller["customer_id"]
-        state.customer_name = caller["full_name"]
-        await decisions.record(
-            business_id=settings.demo_business_id,
-            conversation_id=str(conversation_id),
-            customer_id=state.customer_id,
-            event_type="customer_identified",
-            summary=f"{caller['full_name']} recognised from their number",
-            detail={"source": "caller_id", "phone": caller.get("phone") or None},
-            confidence=1.0,
-        )
+    if outbound:
+        state.customer_id = outbound.get("customer_id")
+        state.customer_name = outbound.get("customer_name")
 
     # Fire-and-forget writes from synchronous event handlers. asyncio holds
     # only a weak reference to a running task, so without this set a
@@ -378,8 +439,15 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.add_shutdown_callback(_cleanup)
 
-    await session.start(agent=Receptionist(state), room=ctx.room)
-    await session.generate_reply(instructions=_greeting_for(state.customer_name))
+    if outbound:
+        agent = OutboundAgent(state, _outbound_instructions(outbound))
+        greeting = OUTBOUND_GREETING
+    else:
+        agent = Receptionist(state)
+        greeting = GREETING
+
+    await session.start(agent=agent, room=ctx.room)
+    await session.generate_reply(instructions=greeting)
 
 
 if __name__ == "__main__":

@@ -9,10 +9,9 @@ import {
 } from "livekit-client";
 import { Page } from "@/components/AppShell";
 import { Panel, PanelHeader, StatusDot, EmptyState, type Tone } from "@/components/ui/primitives";
-import { Button, InlineError, Select } from "@/components/ui/controls";
+import { Button, InlineError } from "@/components/ui/controls";
 import { useActivityFeed, useActivityFeedRealtime } from "@/lib/queries";
 import { api, ApiError } from "@/lib/api";
-import { useCustomers } from "@/lib/pageQueries";
 import { formatClock } from "@/lib/format";
 import { Phone, PhoneOff, Mic, MicOff, Radio } from "lucide-react";
 
@@ -58,9 +57,6 @@ export function VoiceCallPage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [level, setLevel] = useState(0);
   const [muted, setMuted] = useState(false);
-  // Stands in for the number a call arrives from. "" = unknown number.
-  const [callerId, setCallerId] = useState("");
-  const customers = useCustomers();
 
   const roomRef = useRef<Room | null>(null);
   const cleanupAnalyser = useRef<(() => void) | null>(null);
@@ -97,7 +93,7 @@ export function VoiceCallPage() {
 
     let session;
     try {
-      session = await api.voiceSession(callerId || null);
+      session = await api.voiceSession();
     } catch (e) {
       setPhase("failed");
       setError(
@@ -197,29 +193,6 @@ export function VoiceCallPage() {
               </span>
             }
           />
-
-          {/* Standing in for caller ID. A real line delivers the number with
-              the call; a browser has none, so the number is chosen here. The
-              agent cannot tell the difference. */}
-          <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
-            <label htmlFor="caller" className="t-meta shrink-0">
-              Calling from
-            </label>
-            <Select value={callerId} onChange={setCallerId} disabled={live}>
-              <option value="">Unknown number</option>
-              {(customers.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.full_name}
-                  {c.phone ? ` — ${c.phone}` : ""}
-                </option>
-              ))}
-            </Select>
-            <span className="t-meta">
-              {callerId
-                ? "recognised — the agent already knows them"
-                : "not recognised — the agent will ask who is calling"}
-            </span>
-          </div>
 
           <div className="flex items-center gap-3 border-b border-line px-4 py-3">
             {!live ? (

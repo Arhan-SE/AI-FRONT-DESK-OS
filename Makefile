@@ -4,11 +4,13 @@ help:
 	@echo "Genesis OS — AI Business Operating System"
 	@echo ""
 	@echo "  make setup       install backend + frontend dependencies"
-	@echo "  make livekit     run the self-hosted LiveKit server (terminal 1)"
-	@echo "  make api         run FastAPI on :8000                (terminal 2)"
-	@echo "  make agent       run the LiveKit voice agent          (terminal 3)"
-	@echo "  make automation  run the scheduler + worker + Telegram poll (terminal 4)"
-	@echo "  make web         run the Vite dev server on :5173     (terminal 5)"
+	@echo "  make api         run FastAPI on :8000                (terminal 1)"
+	@echo "  make agent       run the LiveKit voice agent          (terminal 2)"
+	@echo "  make automation  run the scheduler + worker + Telegram poll (terminal 3)"
+	@echo "  make web         run the Vite dev server on :5173     (terminal 4)"
+	@echo ""
+	@echo "  make livekit     run a self-hosted LiveKit server instead of LiveKit Cloud"
+	@echo "                   only needed if LIVEKIT_URL in .env is ws://localhost:7880"
 	@echo ""
 	@echo "  make db-push     apply db/migrations in order"
 	@echo "  make seed        generate demo business history"
@@ -18,9 +20,32 @@ help:
 setup:
 	cd backend && uv sync
 	cd frontend && npm install
-	@echo "Install the LiveKit server if missing: brew install livekit"
 
-# Terminal 1 — dev mode uses the well-known devkey/secret pair.
+# Terminal 1
+api:
+	cd backend && uv run uvicorn genesis.api.main:app --reload --port 8000
+
+# Terminal 2 — LiveKit Cloud, not a local server. The agent connects outbound
+# to the wss://*.livekit.cloud project configured as LIVEKIT_URL in .env;
+# there is nothing else to start for it. `make dev-check` verifies that
+# project directly with an authenticated API call.
+agent:
+	cd backend && uv run python -m genesis.agent.worker dev
+
+# Terminal 3
+automation:
+	cd backend && uv run python -m genesis.automation.worker
+
+# Terminal 4
+web:
+	cd frontend && npm run dev
+
+# Optional fallback — a self-hosted LiveKit server for offline development,
+# in place of LiveKit Cloud. Only relevant if LIVEKIT_URL in .env is set back
+# to ws://localhost:7880; if it is a wss://*.livekit.cloud project, this
+# target is not part of the normal startup sequence.
+#
+# Dev mode uses the well-known devkey/secret pair.
 #
 # LiveKit detects this machine's IP at startup and advertises it as its ICE
 # candidate, while binding its media socket to the same address. Those two must
@@ -28,27 +53,19 @@ setup:
 # to loopback, because the media socket does not follow it and every call then
 # dies at "connecting -> disconnected".
 #
-# The consequence: if the machine's IP changes (new network, DHCP renewal),
-# LiveKit is still advertising the old one. Restart this process. `make
-# dev-check` detects exactly that.
+# --bind pins the address *family*, not the address value, so it does not
+# fight that auto-detection. Without it, a network that hands out a routable
+# IPv6 address (common on home Wi-Fi) can make LiveKit auto-select IPv6 for
+# media while the browser and `make dev-check` only ever look for IPv4 — a
+# silent mismatch, not a crash. Loopback must stay in the list alongside the
+# LAN IP: the browser's signalling connection is `ws://localhost:7880`, and
+# dropping 127.0.0.1 from the bind set breaks that even though media is fine.
+#
+# The consequence that remains: if the machine's IP changes (new network,
+# DHCP renewal), LiveKit is still advertising the old one. Restart this
+# process if so — `make dev-check` detects it.
 livekit:
-	livekit-server --dev
-
-# Terminal 2
-api:
-	cd backend && uv run uvicorn genesis.api.main:app --reload --port 8000
-
-# Terminal 3
-agent:
-	cd backend && uv run python -m genesis.agent.worker dev
-
-# Terminal 4
-automation:
-	cd backend && uv run python -m genesis.automation.worker
-
-# Terminal 5
-web:
-	cd frontend && npm run dev
+	livekit-server --dev --bind 127.0.0.1 --bind $$(ipconfig getifaddr en0)
 
 db-push:
 	@test -n "$$DATABASE_URL" || (echo "DATABASE_URL not set — source your .env first" && exit 1)

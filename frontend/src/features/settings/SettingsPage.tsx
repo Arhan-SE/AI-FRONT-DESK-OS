@@ -6,7 +6,6 @@ import {
 import { api } from "@/lib/api";
 import { useCustomers } from "@/lib/pageQueries";
 import logoLockup from "@/assets/logo-lockup.png";
-import { CalendarFeeds } from "./CalendarFeeds";
 
 interface Health {
   database: { postgres: string; customers: number; appointments: number };
@@ -175,8 +174,6 @@ export function SettingsPage() {
           )}
         </Panel>
       </div>
-
-      <CalendarFeeds />
 
       <Panel className="mt-6">
         <PanelHeader title="Demo tenant" />

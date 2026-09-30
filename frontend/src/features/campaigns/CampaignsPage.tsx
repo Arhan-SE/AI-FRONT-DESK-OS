@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Page } from "@/components/AppShell";
 import {
@@ -9,7 +10,7 @@ import { Button, Dialog, Field, Select, Input, InlineError } from "@/components/
 import { useCampaigns } from "@/lib/pageQueries";
 import { api, ApiError, type CampaignType } from "@/lib/api";
 import { formatRelative } from "@/lib/format";
-import { Megaphone, Plus, Play, ShieldCheck } from "lucide-react";
+import { Megaphone, Plus, Play, ShieldCheck, PhoneCall } from "lucide-react";
 
 const TYPES: { value: CampaignType; label: string; blurb: string }[] = [
   { value: "reactivation", label: "Win back lapsed customers",
@@ -126,6 +127,7 @@ export function CampaignsPage() {
 
 function NewCampaignDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [type, setType] = useState<CampaignType>("reactivation");
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -217,10 +219,10 @@ function NewCampaignDialog({ open, onClose }: { open: boolean; onClose: () => vo
         ) : (
           <ul className="max-h-[190px] space-y-px overflow-y-auto rounded-[4px] border border-line">
             {preview.data?.candidates.map((c) => (
-              <li key={c.customer_id}>
+              <li key={c.customer_id} className="flex items-center gap-1">
                 <label
                   className={[
-                    "flex cursor-pointer items-center gap-2 px-2.5 py-1.5",
+                    "flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-2.5 py-1.5",
                     c.eligible ? "hover:bg-surface" : "opacity-60",
                   ].join(" ")}
                 >
@@ -241,6 +243,18 @@ function NewCampaignDialog({ open, onClose }: { open: boolean; onClose: () => vo
                     </span>
                   )}
                 </label>
+                {type === "reactivation" && c.eligible ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate(`/call/reactivation/${c.customer_id}`)}
+                    title="Start a call with the AI voice agent, without launching the full campaign"
+                    className="mr-1.5 shrink-0"
+                  >
+                    <PhoneCall className="size-3.5" strokeWidth={2} />
+                    Call
+                  </Button>
+                ) : null}
               </li>
             ))}
           </ul>
